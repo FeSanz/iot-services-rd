@@ -15,6 +15,9 @@ const port = process.env.PORT || 3000;
 app.options('*', cors());
 app.use(express.json());*/
 
+app.use(cors());
+app.use(express.json());
+
 //app.use('/api', require('./services/fusion/organizations'));
 
 /*try {
