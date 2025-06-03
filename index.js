@@ -16,7 +16,11 @@ app.use(express.json());
 
 app.use('/api', require('./services/fusion/organizations'));*/
 
-app.listen(port, () => console.log(`Listening on ${port}!`));
+app.get('/', (req, res) => {
+    res.send('Hello World');
+})
+
+app.listen(port, () => console.log(`Escuchando en: ${port}!`));
 
 
 /*const server = app.listen(port, () => {
