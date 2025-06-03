@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 
-// ✅ Correcto - usar 'router' y quitar '/api' de la ruta
+
 router.get('/organizations', async (req, res) => {
     try {
         const resultado = await pool.query(`
@@ -33,5 +33,5 @@ router.get('/organizations', async (req, res) => {
     }
 });
 
-// ✅ No olvides exportar el router
+//Exportar el router
 module.exports = router;
