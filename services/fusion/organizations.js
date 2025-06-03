@@ -5,13 +5,7 @@ const pool = require('../../database/pool');
 //Obtener todas las organizaciones
 router.get('/organizations', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT
-                                             organization_id AS "OrganizationId",
-                                             code AS "Code",
-                                             name AS "Name",
-                                             location AS "Location",
-                                             work_method AS "WorkMethod",
-                                             bu_id AS "BUId"
+        const result = await pool.query(`SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"
                                          FROM MES_ORGANIZATIONS
                                          ORDER BY name DESC`);
 
@@ -37,9 +31,9 @@ router.get('/organizations', async (req, res) => {
 router.get('/organizations/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await pool.query(`SELECT organization_id, code, name, location, work_method, bu_id
-                                                FROM MES_ORGANIZATIONS
-                                                WHERE organization_id = $1`, [id]);
+        const result = await pool.query(`SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId" 
+                                         FROM MES_ORGANIZATIONS
+                                         WHERE organization_id = $1`, [id]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({
@@ -77,7 +71,7 @@ router.post('/organizations', async (req, res) => {
         if (!OrganizationId || !Code || !Name) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'Los campos OrganizationId, Code y Name son requeridos',
+                message: 'Los campos Id, Código y Nombre son requeridos',
                 totalResults: 0,
                 items: null
             });
@@ -97,7 +91,7 @@ router.post('/organizations', async (req, res) => {
 
         const result = await pool.query(`INSERT INTO MES_ORGANIZATIONS (organization_id, code, name, location, work_method, bu_id)
                                         VALUES ($1, $2, $3, $4, $5, $6)
-                                        RETURNING organization_id, code, name, location, work_method, bu_id`,
+                                        RETURNING organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"`,
                                         [OrganizationId, Code, Name, Location, WorkMethod, BUId]);
 
         res.status(201).json({
@@ -160,7 +154,7 @@ router.put('/organizations/:id', async (req, res) => {
         const result = await pool.query(`UPDATE MES_ORGANIZATIONS 
                                         SET code = $1, name = $2, location = $3, work_method = $4, bu_id = $5
                                         WHERE organization_id = $6
-                                        RETURNING organization_id, code, name, location, work_method, bu_id`,
+                                        RETURNING organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"`,
                                         [Code, Name, Location, WorkMethod, BUId, id]);
 
         res.json({
