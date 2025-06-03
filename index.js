@@ -14,7 +14,7 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json());
 
-app.use('/api', require('./services/fusion/organizations'));
+app.use('/services', require('./services/fusion/organizations'));
 
 app.get('/', (req, res) => {
     res.send('Hello World');
