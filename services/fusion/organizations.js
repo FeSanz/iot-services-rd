@@ -5,9 +5,15 @@ const pool = require('../../database/pool');
 //Obtener todas las organizaciones
 router.get('/organizations', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT organization_id, code, name, location, work_method, bu_id
-                                                FROM MES_ORGANIZATIONS
-                                            ORDER BY name DESC`);
+        const result = await pool.query(`SELECT
+                                             organization_id AS "OrganizationId",
+                                             code AS "Code",
+                                             name AS "Name",
+                                             location AS "Location",
+                                             work_method AS "WorkMethod",
+                                             bu_id AS "BUId"
+                                         FROM MES_ORGANIZATIONS
+                                         ORDER BY name DESC`);
 
         res.json({
             errorsExistFlag: false,
