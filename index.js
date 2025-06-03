@@ -31,7 +31,11 @@ app.get('/', (req, res) => {
     res.send('Hello World');
 });
 
-const server = app.listen(port, () => {
-    console.log(`API REST escuchando en http://localhost:${port}`);
+app.listen(port, () => {
+    console.log(`Servidor corriendo en puerto ${port}`);
 });
+
+/*const server = app.listen(port, () => {
+    console.log(`API REST escuchando en http://localhost:${port}`);
+});*/
 
