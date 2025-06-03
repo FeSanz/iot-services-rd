@@ -17,7 +17,7 @@ app.use(express.json());
 
 //app.use('/api', require('./services/fusion/organizations'));
 
-try {
+/*try {
     console.log('Intentando cargar organizations router...');
     const orgsRouter = require('./services/fusion/organizations');
     console.log('Router cargado exitosamente');
@@ -25,7 +25,7 @@ try {
     console.log('Router montado en /api');
 } catch (error) {
     console.error('Error cargando organizations router:', error);
-}
+}*/
 
 app.get('/', (req, res) => {
     res.send('Hello World');
