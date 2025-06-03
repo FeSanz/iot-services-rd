@@ -15,7 +15,7 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json());
 
-app.use('/api', require('./services/fusion/organizations'));
+//app.use('/api', require('./services/fusion/organizations'));
 
 app.get('/', (req, res) => {
     res.send('Hello World');
@@ -24,3 +24,13 @@ app.get('/', (req, res) => {
 const server = app.listen(port, () => {
     console.log(`API REST escuchando en http://localhost:${port}`);
 });
+
+try {
+    console.log('Intentando cargar organizations router...');
+    const orgsRouter = require('./services/fusion/organizations');
+    console.log('Router cargado exitosamente');
+    app.use('/api', orgsRouter);
+    console.log('Router montado en /api');
+} catch (error) {
+    console.error('Error cargando organizations router:', error);
+}
