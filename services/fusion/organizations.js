@@ -2,20 +2,20 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 
-//Obtener todas las organizaciones
-app.get('/api/organizations', async (req, res) => {
+// ✅ Correcto - usar 'router' y quitar '/api' de la ruta
+router.get('/organizations', async (req, res) => {
     try {
         const resultado = await pool.query(`
-      SELECT 
-        organization_id,
-        code,
-        name,
-        location,
-        work_method,
-        bu_id
-      FROM MES_ORGANIZATIONS 
-      ORDER BY organization_id DESC
-    `);
+            SELECT
+                organization_id,
+                code,
+                name,
+                location,
+                work_method,
+                bu_id
+            FROM MES_ORGANIZATIONS
+            ORDER BY organization_id DESC
+        `);
 
         res.json({
             exito: true,
@@ -32,3 +32,6 @@ app.get('/api/organizations', async (req, res) => {
         });
     }
 });
+
+// ✅ No olvides exportar el router
+module.exports = router;
