@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const orgsRouter = require("./services/fusion/organizations");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -17,14 +18,6 @@ app.use(express.json());
 
 //app.use('/api', require('./services/fusion/organizations'));
 
-app.get('/', (req, res) => {
-    res.send('Hello World');
-});
-
-const server = app.listen(port, () => {
-    console.log(`API REST escuchando en http://localhost:${port}`);
-});
-
 try {
     console.log('Intentando cargar organizations router...');
     const orgsRouter = require('./services/fusion/organizations');
@@ -34,3 +27,12 @@ try {
 } catch (error) {
     console.error('Error cargando organizations router:', error);
 }
+
+app.get('/', (req, res) => {
+    res.send('Hello World');
+});
+
+const server = app.listen(port, () => {
+    console.log(`API REST escuchando en http://localhost:${port}`);
+});
+
