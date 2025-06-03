@@ -6,7 +6,7 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(cors({
+/*app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'DELETE', 'PUT', 'OPTIONS'],
     allowedHeaders: ['Content-Type']
@@ -14,9 +14,11 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json());
 
-app.use('/api', require('./services/fusion/organizations'));
+app.use('/api', require('./services/fusion/organizations'));*/
+
+app.listen(port, () => console.log(`Listening on ${port}!`));
 
 
-const server = app.listen(port, () => {
+/*const server = app.listen(port, () => {
     console.log(`API REST escuchando en http://localhost:${port}`);
-});
+});*/
