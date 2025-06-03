@@ -18,7 +18,7 @@ app.use(express.json());*/
 app.use(cors());
 app.use(express.json());
 
-//app.use('/api', require('./services/fusion/organizations'));
+app.use('/api', require('./services/fusion/organizations'));
 
 /*try {
     console.log('Intentando cargar organizations router...');
