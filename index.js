@@ -16,7 +16,7 @@ app.options('*', cors());
 app.use(express.json());*/
 
 app.use(cors({
-    origin: true, // Esto permite cualquier origen
+    origin: ['http://localhost:8100', 'http://localhost:4200'],
     credentials: true
 }));
 
