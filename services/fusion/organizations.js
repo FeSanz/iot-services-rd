@@ -7,7 +7,7 @@ router.get('/organizations', async (req, res) => {
     try {
         const result = await pool.query(`SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"
                                          FROM MES_ORGANIZATIONS
-                                         ORDER BY name DESC`);
+                                         ORDER BY name ASC`);
 
         res.json({
             errorsExistFlag: false,
@@ -63,7 +63,7 @@ router.get('/organizations/:id', async (req, res) => {
 });
 
 // Insertar nueva organización
-router.post('/organizations', async (req, res) => {
+/*router.post('/organizations', async (req, res) => {
     try {
         const { OrganizationId, Code, Name, Location, WorkMethod, BUId } = req.body;
 
@@ -121,7 +121,68 @@ router.post('/organizations', async (req, res) => {
             items: null
         });
     }
+});*/
+
+router.post('/organizations', async (req, res) => {
+    try {
+        const organizations = req.body.items || [];
+
+        if (organizations.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron organizaciones',
+                totalResults: 0
+            });
+        }
+
+        // Obtener IDs existentes
+        const orgIds = organizations.map(org => org.OrganizationId);
+        const existingResult = await pool.query(
+            'SELECT organization_id FROM MES_ORGANIZATIONS WHERE organization_id = ANY($1)',
+            [orgIds]
+        );
+        const existingIds = new Set(existingResult.rows.map(row => row.organization_id));
+
+        // Filtrar organizaciones nuevas
+        const newOrganizations = organizations.filter(org => !existingIds.has(org.OrganizationId));
+
+        if (newOrganizations.length === 0) {
+            return res.status(200).json({
+                errorsExistFlag: false,
+                message: 'Todas las organizaciones ya existen',
+                totalResults: 0
+            });
+        }
+
+        // Preparar inserción
+        const values = [];
+        const placeholders = newOrganizations.map((org, index) => {
+            const base = index * 6;
+            values.push(org.OrganizationId, org.Code, org.Name, org.Location, org.WorkMethod, org.BUId);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+        });
+
+        await pool.query(`
+            INSERT INTO MES_ORGANIZATIONS (organization_id, code, name, location, work_method, bu_id)
+            VALUES ${placeholders.join(', ')}
+        `, values);
+
+        res.status(201).json({
+            errorsExistFlag: false,
+            message: `${newOrganizations.length} organizaciones creadas exitosamente`,
+            totalResults: newOrganizations.length,
+        });
+
+    } catch (error) {
+        console.error('Error al insertar organizaciones:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al insertar organizaciones: ' + error.message,
+            totalResults: 0
+        });
+    }
 });
+
 
 // Actualizar organización
 router.put('/organizations/:id', async (req, res) => {
