@@ -169,7 +169,7 @@ router.post('/organizations', async (req, res) => {
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `${newOrganizations.length} organizaciones creadas exitosamente`,
+            message: `Organizaciones registradas [${newOrganizations.length} ]`,
             totalResults: newOrganizations.length,
         });
 
@@ -259,8 +259,7 @@ router.delete('/organizations/:id', async (req, res) => {
             return res.status(404).json({
                 errorsExistFlag: true,
                 message: 'Organización no encontrada',
-                totalResults: 0,
-                items: null
+                totalResults: 0
             });
         }
 
@@ -269,8 +268,7 @@ router.delete('/organizations/:id', async (req, res) => {
         res.json({
             errorsExistFlag: false,
             message: 'Organización eliminada exitosamente',
-            totalResults: 0,
-            items: null
+            totalResults: 0
         });
 
     } catch (error) {
@@ -281,16 +279,14 @@ router.delete('/organizations/:id', async (req, res) => {
             return res.status(409).json({
                 errorsExistFlag: true,
                 message: 'No se puede eliminar la organización porque está siendo utilizada por otros registros',
-                totalResults: 0,
-                items: null
+                totalResults: 0
             });
         }
 
         res.status(500).json({
             errorsExistFlag: true,
             message: 'Error al eliminar organización: ' + error.message,
-            totalResults: 0,
-            items: null
+            totalResults: 0
         });
     }
 });
