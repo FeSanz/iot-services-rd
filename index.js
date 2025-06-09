@@ -22,11 +22,11 @@ app.use(cors({
 app.use(cors());
 app.use(express.json());
 
-app.use('/api', require('./services/db/machines'));
-app.use('/api', require('./services/db/sensor_data'));
-app.use('/api', require('./services/db/sensors'));
-app.use('/api', require('./services/db/users'));
-app.use('/api', require('./services/db/dashboards'));
+app.use('/api', require('./services/iot/machines'));
+app.use('/api', require('./services/iot/sensor_data'));
+app.use('/api', require('./services/iot/sensors'));
+app.use('/api', require('./services/iot/users'));
+app.use('/api', require('./services/iot/dashboards'));
 app.use('/api', require('./services/fusion/organizations'));
 const { initWebSocket } = require('./services/websocket/websocket');
 

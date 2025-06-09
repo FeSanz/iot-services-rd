@@ -176,7 +176,7 @@ router.delete('/machines/:id', async (req, res) => {
         if (result.rowCount === 0) {
             return res.status(404).json({
                 existError: true,
-                message: 'Sensor no encontrado'
+                message: 'Máquina no encontrado'
             });
         }
 
