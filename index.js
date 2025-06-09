@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -23,7 +22,13 @@ app.use(cors({
 app.use(cors());
 app.use(express.json());
 
+app.use('/api', require('./services/db/machines'));
+app.use('/api', require('./services/db/sensor_data'));
+app.use('/api', require('./services/db/sensors'));
+app.use('/api', require('./services/db/users'));
+app.use('/api', require('./services/db/dashboards'));
 app.use('/api', require('./services/fusion/organizations'));
+const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
     res.send('Condor MES IIoT Services ');
@@ -33,3 +38,4 @@ app.listen(port, () => {
     console.log(`Servidor corriendo en puerto ${port}`);
 });
 
+initWebSocket(app);
