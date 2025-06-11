@@ -73,6 +73,8 @@ router.delete('/dashboards/:id', async (req, res) => {
 //actualizar dashboards
 router.put('/dashboards/:id', async (req, res) => {
     const dashboardId = req.params.id;
+    console.log(dashboardId);
+    
     const { user_id, name, color, parameters, updated_by } = req.body;
     try {
         const result = await pool.query(`UPDATE mes_dashboards SET user_id = $1, name = $2, color = $3, parameters = $4::jsonb, updated_date = CURRENT_TIMESTAMP, updated_by = $5 WHERE dashboard_id = $6 RETURNING *`,

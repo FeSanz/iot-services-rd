@@ -35,7 +35,7 @@ router.post('/sensors/:machine_id', async (req, res) => {
     try {
         const insertedSensors = [];
         for (const item of items) {
-            const { name, var: variable, icon, created_by, updated_by } = item;
+            const { sensor_name, sensor_var, sensor_icon, created_by, updated_by } = item;
 
             const result = await pool.query(
                 `INSERT INTO mes_sensors (
@@ -43,7 +43,7 @@ router.post('/sensors/:machine_id', async (req, res) => {
                 ) VALUES (
                     $1, $2, $3, $4, CURRENT_TIMESTAMP, $5, CURRENT_TIMESTAMP, $6
                 ) RETURNING *`,
-                [name, variable, icon, machine_id, created_by, updated_by]
+                [sensor_name, sensor_var, sensor_icon, machine_id, created_by, updated_by]
             );
 
             insertedSensors.push(result.rows[0]);
