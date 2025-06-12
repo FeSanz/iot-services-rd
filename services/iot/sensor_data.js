@@ -126,13 +126,23 @@ router.post('/sensorData', async (req, res) => {
 
         const sensorId = sensorResult.rows[0].sensor_id;
 
-        // 2️⃣ Insertar nuevo dato
-        await pool.query(
+        const result = await pool.query(
             `INSERT INTO mes_sensor_data (sensor_id, value, comment, date_time)
              VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
              RETURNING *`,
             [sensorId, value, comment || '']
         );
+
+        const payload = {
+            sensorId,
+            sensor_var,
+            value: result.rows[0].value,
+            time: result.rows[0].date_time
+        };
+        
+        notifyToUsers(sensorId, {
+            value: payload
+        });
 
         res.status(201).json({
             errorsExistFlag: false

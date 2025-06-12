@@ -8,16 +8,15 @@ function initWebSocket(server) {
         ws.on('message', (msg) => {
             try {
                 const data = JSON.parse(msg);
-                if (data.type === 'suscribe' && data.sensor_id) {
+                if (data.sensor_id) {
                     ws.suscribedSensorId = data.sensor_id;
                 }
             } catch (e) {
                 console.error('Error 1', e);
             }
         });
-
         ws.on('close', () => {
-            
+
         });
     });
 }

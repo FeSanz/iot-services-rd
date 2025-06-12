@@ -34,8 +34,8 @@ app.get('/', (req, res) => {
     res.send('Condor MES IIoT Services ');
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`Servidor corriendo en puerto ${port}`);
 });
 
-initWebSocket(app);
+initWebSocket(server);
