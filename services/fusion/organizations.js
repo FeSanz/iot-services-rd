@@ -1,128 +1,33 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
+const {selectFromDB, selectByIdFromDB} = require("../../models/sql-execute");
 
-//Obtener todas las organizaciones
+//Obtener todas los registros
 router.get('/organizations', async (req, res) => {
-    try {
-        const result = await pool.query(`SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"
-                                         FROM MES_ORGANIZATIONS
-                                         ORDER BY name ASC`);
 
-        res.json({
-            errorsExistFlag: false,
-            message: 'OK',
-            totalResults: result.rows.length,
-            items: result.rows
-        });
+    const sqlQuery = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"
+                             FROM MES_ORGANIZATIONS
+                             ORDER BY name ASC`;
 
-    } catch (error) {
-        console.error('Error al obtener organizaciones: ', error);
-        res.status(500).json({
-            errorsExistFlag: true,
-            message: 'Error al obtener organizaciones: ' + error.message,
-            totalResults: 0,
-            items: null
-        });
-    }
+    const result = await selectFromDB(sqlQuery);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
 });
 
-// Obtener una organización por ID
+// Obtener un registro por ID
 router.get('/organizations/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const result = await pool.query(`SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId" 
-                                         FROM MES_ORGANIZATIONS
-                                         WHERE organization_id = $1`, [id]);
+    const { id } = req.params;
+    const sqlQuery  = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId" 
+                             FROM MES_ORGANIZATIONS
+                             WHERE organization_id = $1`;
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                errorsExistFlag: true,
-                message: 'Organización no encontrada',
-                totalResults: 0,
-                items: null
-            });
-        }
-
-        res.json({
-            errorsExistFlag: false,
-            message: 'OK',
-            totalResults: 1,
-            items: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error('Error al obtener organización: ', error);
-        res.status(500).json({
-            errorsExistFlag: true,
-            message: 'Error al obtener organización: ' + error.message,
-            totalResults: 0,
-            items: null
-        });
-    }
+    const result = await selectByIdFromDB(sqlQuery, id);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
 });
 
-// Insertar nueva organización
-/*router.post('/organizations', async (req, res) => {
-    try {
-        const { OrganizationId, Code, Name, Location, WorkMethod, BUId } = req.body;
-
-        // Validación básica
-        if (!OrganizationId || !Code || !Name) {
-            return res.status(400).json({
-                errorsExistFlag: true,
-                message: 'Los campos Id, Código y Nombre son requeridos',
-                totalResults: 0,
-                items: null
-            });
-        }
-
-        // Verificar si ya existe una organización con ese ID
-        const checkResult = await pool.query('SELECT organization_id FROM MES_ORGANIZATIONS WHERE organization_id = $1', [OrganizationId]);
-
-        if (checkResult.rows.length > 0) {
-            return res.status(409).json({
-                errorsExistFlag: true,
-                message: `Ya existe una organización con ese ID [${OrganizationId}]`,
-                totalResults: 0,
-                items: null
-            });
-        }
-
-        const result = await pool.query(`INSERT INTO MES_ORGANIZATIONS (organization_id, code, name, location, work_method, bu_id)
-                                        VALUES ($1, $2, $3, $4, $5, $6)
-                                        RETURNING organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"`,
-                                        [OrganizationId, Code, Name, Location, WorkMethod, BUId]);
-
-        res.status(201).json({
-            errorsExistFlag: false,
-            message: 'Organización creada exitosamente',
-            totalResults: 1,
-            items: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error('Error al insertar organización: ', error);
-
-        // Manejar error de código duplicado (si existe constraint unique)
-        if (error.code === '23505') {
-            return res.status(409).json({
-                errorsExistFlag: true,
-                message: 'Ya existe una organización con ese código',
-                totalResults: 0,
-                items: null
-            });
-        }
-
-        res.status(500).json({
-            errorsExistFlag: true,
-            message: 'Error al insertar organización: ' + error.message,
-            totalResults: 0,
-            items: null
-        });
-    }
-});*/
-
+//Insertar multiples datos
 router.post('/organizations', async (req, res) => {
     try {
         const organizations = req.body.items || [];
@@ -130,7 +35,7 @@ router.post('/organizations', async (req, res) => {
         if (organizations.length === 0) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'No se proporcionaron organizaciones',
+                message: 'No se proporcionaron datos',
                 totalResults: 0
             });
         }
@@ -149,7 +54,7 @@ router.post('/organizations', async (req, res) => {
         if (newOrganizations.length === 0) {
             return res.status(200).json({
                 errorsExistFlag: false,
-                message: 'Todas las organizaciones ya existen',
+                message: 'Todas los datos proporcionados ya existen',
                 totalResults: 0
             });
         }
@@ -169,22 +74,22 @@ router.post('/organizations', async (req, res) => {
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Organizaciones registradas [${newOrganizations.length} ]`,
+            message: `Registrado exitosamente [${newOrganizations.length}]`,
             totalResults: newOrganizations.length,
         });
 
     } catch (error) {
-        console.error('Error al insertar organizaciones:', error);
+        console.error('Error al insertar dato:', error);
         res.status(500).json({
             errorsExistFlag: true,
-            message: 'Error al insertar organizaciones: ' + error.message,
+            message: 'Error al insertar dato: ' + error.message,
             totalResults: 0
         });
     }
 });
 
 
-// Actualizar organización
+// Actualizar registro por ID
 router.put('/organizations/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -194,7 +99,7 @@ router.put('/organizations/:id', async (req, res) => {
         if (!Code || !Name) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'Los campos Code y Name son requeridos',
+                message: 'Faltan campos requeridos',
                 totalResults: 0,
                 items: null
             });
@@ -206,7 +111,7 @@ router.put('/organizations/:id', async (req, res) => {
         if (checkResult.rows.length === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Organización no encontrada',
+                message: 'Registro no encontrado',
                 totalResults: 0,
                 items: null
             });
@@ -220,19 +125,19 @@ router.put('/organizations/:id', async (req, res) => {
 
         res.json({
             errorsExistFlag: false,
-            message: 'Organización actualizada exitosamente',
+            message: 'Actualizado exitosamente',
             totalResults: 1,
             items: result.rows[0]
         });
 
     } catch (error) {
-        console.error('Error al actualizar organización: ', error);
+        console.error('Error al actualizar: ', error);
 
         // Manejar error de código duplicado
         if (error.code === '23505') {
             return res.status(409).json({
                 errorsExistFlag: true,
-                message: 'Ya existe una organización con ese código',
+                message: 'Ya existe un registro con ese código',
                 totalResults: 0,
                 items: null
             });
@@ -240,25 +145,25 @@ router.put('/organizations/:id', async (req, res) => {
 
         res.status(500).json({
             errorsExistFlag: true,
-            message: 'Error al actualizar organización: ' + error.message,
+            message: 'Error al actualizar: ' + error.message,
             totalResults: 0,
             items: null
         });
     }
 });
 
-// Eliminar organización
+// Eliminar registro por ID
 router.delete('/organizations/:id', async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Verificar si la organización existe
+        // Verificar si el registro existe
         const checkResult = await pool.query('SELECT organization_id FROM MES_ORGANIZATIONS WHERE organization_id = $1', [id]);
 
         if (checkResult.rows.length === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Organización no encontrada',
+                message: 'Registro no encontrado',
                 totalResults: 0
             });
         }
@@ -267,25 +172,25 @@ router.delete('/organizations/:id', async (req, res) => {
 
         res.json({
             errorsExistFlag: false,
-            message: 'Organización eliminada exitosamente',
+            message: 'Eliminado exitosamente',
             totalResults: 0
         });
 
     } catch (error) {
-        console.error('Error al eliminar organización: ', error);
+        console.error('Error al eliminar : ', error);
 
         // Manejar error de constraint de foreign key
         if (error.code === '23503') {
             return res.status(409).json({
                 errorsExistFlag: true,
-                message: 'No se puede eliminar la organización porque está siendo utilizada por otros registros',
+                message: 'No se puede eliminar porque está siendo utilizado por otros registros',
                 totalResults: 0
             });
         }
 
         res.status(500).json({
             errorsExistFlag: true,
-            message: 'Error al eliminar organización: ' + error.message,
+            message: 'Error al eliminar: ' + error.message,
             totalResults: 0
         });
     }

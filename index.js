@@ -28,6 +28,7 @@ app.use('/api', require('./services/iot/sensors'));
 app.use('/api', require('./services/iot/users'));
 app.use('/api', require('./services/iot/dashboards'));
 app.use('/api', require('./services/fusion/organizations'));
+app.use('/api', require('./services/fusion/resources'));
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
