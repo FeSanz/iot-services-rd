@@ -8,7 +8,7 @@ router.get('/machines/:userId', async (req, res) => {
 
     try {
         const resultado = await pool.query(
-            'SELECT * FROM mes_machines WHERE user_id = $1',
+            'SELECT m.* FROM mes_user_machines um JOIN mes_machines m ON m.machine_id = um.machine_id WHERE um.user_id = $1;',
             [userId]
         );
         res.json({
@@ -29,41 +29,44 @@ router.get('/machinesAndSensors/:userId', async (req, res) => {
     try {
         const resultado = await pool.query(
             `SELECT
-                m.machine_id,
-            m.name AS machine_name,
-            m.token AS token,
-            m.code AS machine_code,
-            m.organization_id,
-            COALESCE(
-                json_agg(
-                    json_build_object(
-                        'sensor_id', s.sensor_id,
-                        'sensor_name', s.name,
-                        'sensor_icon', s.icon,
-                        'sensor_var', s.var,
-                        'last_value', sd.value,
-                        'last_date_time', sd.date_time
-                    )
-                ) FILTER(WHERE s.sensor_id IS NOT NULL), '[]':: json
-            ) AS sensors
+    m.machine_id,
+    m.name AS machine_name,
+    m.token AS token,
+    m.code AS machine_code,
+    m.organization_id,
+    COALESCE(
+        json_agg(
+            json_build_object(
+                'sensor_id', s.sensor_id,
+                'sensor_name', s.name,
+                'sensor_icon', s.icon,
+                'sensor_var', s.var,
+                'last_value', sd.value,
+                'last_date_time', sd.date_time
+            )
+        ) FILTER (WHERE s.sensor_id IS NOT NULL),
+        '[]'::json
+    ) AS sensors
 FROM 
-    mes_machines m
+    mes_users_machines um
+JOIN 
+    mes_machines m ON m.machine_id = um.machine_id
 LEFT JOIN 
     mes_sensors s ON s.machine_id = m.machine_id
-LEFT JOIN LATERAL(
-                SELECT sd.value, sd.date_time
+LEFT JOIN LATERAL (
+    SELECT sd.value, sd.date_time
     FROM mes_sensor_data sd
     WHERE sd.sensor_id = s.sensor_id
     ORDER BY sd.date_time DESC
     LIMIT 1
-            ) sd ON TRUE
+) sd ON TRUE
 WHERE 
-    m.user_id = $1
+    um.user_id = $1
 GROUP BY 
     m.machine_id, m.name, m.code, m.token, m.organization_id
 ORDER BY 
-    m.name;`
-            ,
+    m.name;
+`,
             [userId]
         );
         res.json({
@@ -104,10 +107,15 @@ router.post('/machines', async (req, res) => {
     const { user_id, organization_id, code, name, token, work_center_id, work_center, machine_class } = req.body;
     try {
         const result = await pool.query(
-            `INSERT INTO MES_MACHINES(user_id, organization_id, code, name, token, work_center_id, work_center, class
-            ) VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO MES_MACHINES(organization_id, code, name, token, work_center_id, work_center, class
+            ) VALUES($1, $2, $3, $4, $5, $6, $7)
         RETURNING * `,
-            [user_id, organization_id, code, name, token, work_center_id, work_center, machine_class]
+            [organization_id, code, name, token, work_center_id, work_center, machine_class]
+        );
+        await pool.query(
+            `INSERT INTO MES_USERS_MACHINES(user_id, machine_id) VALUES($1, $2)
+        RETURNING * `,
+            [user_id, result.rows[0].machine_id]
         );
 
         res.status(201).json({

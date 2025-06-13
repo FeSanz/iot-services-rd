@@ -36,9 +36,9 @@ router.get('/sensorData/:sensorID', async (req, res) => {
         res.status(201).json({
             existError: false,
             message: "OK",
-            sensor_name: sensorName,
+            items: { sensor_name: sensorName, data: data },
             totalResults: resultado.rows.length,
-            items: data
+
         });
     } catch (error) {
         console.error('Error al obtener datos:', error);
@@ -139,9 +139,9 @@ router.post('/sensorData', async (req, res) => {
             value: result.rows[0].value,
             time: result.rows[0].date_time
         };
-        
+
         notifyToUsers(sensorId, {
-            value: payload
+            data: payload
         });
 
         res.status(201).json({
