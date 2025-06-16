@@ -29,6 +29,8 @@ app.use('/api', require('./services/iot/users'));
 app.use('/api', require('./services/iot/dashboards'));
 app.use('/api', require('./services/fusion/organizations'));
 app.use('/api', require('./services/fusion/resources'));
+app.use('/api', require('./services/fusion/items'));
+app.use('/api', require('./services/fusion/shifts'));
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
