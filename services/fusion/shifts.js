@@ -6,8 +6,8 @@ const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute")
 // Obtener registros por organizacion
 router.get('/shifts/:organization', async (req, res) => {
     const { organization } = req.params;
-    const sqlQuery  = `SELECT s.shift_id AS "ShiftId", s.name AS "Name", s.start_time AS "StartTime", 
-                                     s.end_time AS "EndTime", s.duration AS "Duration",
+    const sqlQuery  = `SELECT os.org_shift_id AS "OrgShiftId", s.shift_id AS "ShiftId", s.name AS "Name",
+                                     s.start_time AS "StartTime", s.end_time AS "EndTime", s.duration AS "Duration",
                                       s.enabled_flag AS "EnabledFlag"
                                FROM MES_ORG_SHIFTS os
                                         JOIN MES_SHIFTS s ON os.shift_id = s.shift_id
@@ -117,32 +117,40 @@ router.post('/shifts', async (req, res) => {
 });
 
 
-// Eliminar registro por ID
-router.delete('/shifts/:id', async (req, res) => {
+// Eliminar registro por ID de relación organización-turno
+router.delete('/shifts/:orgShiftId', async (req, res) => {
     try {
-        const { id } = req.params;
+        const { orgShiftId } = req.params;
 
-        // Verificar si el registro existe
-        const checkResult = await pool.query('SELECT machine_id FROM MES_SHIFTS WHERE machine_id = $1', [id]);
+        // Obtener el SHIFT_ID y eliminar la relación en una sola consulta
+        const shiftResult = await pool.query(`
+            DELETE FROM MES_ORG_SHIFTS 
+            WHERE org_shift_id = $1 
+            RETURNING shift_id
+        `, [orgShiftId]);
 
-        if (checkResult.rows.length === 0) {
+        if (shiftResult.rows.length === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Registro no encontrado',
+                message: 'Relación organización-turno no encontrada',
                 totalResults: 0
             });
         }
 
-        await pool.query('DELETE FROM MES_SHIFTS WHERE machine_id = $1', [id]);
+        const shiftId = shiftResult.rows[0].shift_id;
+
+        // Verificar si el turno está siendo utilizado en otras organizaciones y eliminarlo si no
+        await pool.query(`DELETE FROM MES_SHIFTS WHERE shift_id = $1 AND NOT EXISTS (
+                           SELECT 1 FROM MES_ORG_SHIFTS WHERE shift_id = $1)`, [shiftId]);
 
         res.json({
             errorsExistFlag: false,
             message: 'Eliminado exitosamente',
-            totalResults: 0
+            totalResults: 1
         });
 
     } catch (error) {
-        console.error('Error al eliminar : ', error);
+        console.error('Error al eliminar:', error);
 
         // Manejar error de constraint de foreign key
         if (error.code === '23503') {
