@@ -15,7 +15,7 @@ app.options('*', cors());
 app.use(express.json());*/
 
 app.use(cors({
-    origin: ['http://localhost:8100', 'http://localhost:4200'],
+    origin: ['http://localhost:8100', 'http://localhost:8101'],
     credentials: true
 }));
 
@@ -31,6 +31,7 @@ app.use('/api', require('./services/fusion/organizations'));
 app.use('/api', require('./services/fusion/resources'));
 app.use('/api', require('./services/fusion/items'));
 app.use('/api', require('./services/fusion/shifts'));
+app.use('/api', require('./services/fusion/work_orders'));
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
