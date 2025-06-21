@@ -27,26 +27,41 @@ router.get('/users/:organizationId', async (req, res) => {
 //Nuevo usuario
 router.post('/users', async (req, res) => {
     const { organization_id, role, name, type, password, email, level, rfid, enabled_flag } = req.body;
-
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
-            `INSERT INTO mes_users (organization_id, role, name, type, password, email, level, rfid, enabled_flag) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        await client.query('BEGIN');
+        const insertUserResult = await client.query(
+            `INSERT INTO mes_users (organization_id, role, name, type, password, email, level, rfid, enabled_flag)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING user_id`,
             [organization_id, role, name, type, password, email, level, rfid, enabled_flag || 'Y']
         );
 
+        const user_id = insertUserResult.rows[0].user_id;
+        await client.query(
+            `INSERT INTO mes_users_org (user_id, organization_id) VALUES ($1, $2)`,
+            [user_id, organization_id]
+        );
+
+        await client.query('COMMIT');
         res.status(201).json({
             errorsExistFlag: false,
             message: 'OK',
-            result: result.rows[0]
+            user_id
         });
+
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error al crear usuario:', error);
         res.status(500).json({ error: 'Error al crear usuario' });
+    } finally {
+        client.release();
     }
 });
+
 router.put('/users/:id', async (req, res) => {
     const userId = req.params.id;
-    const {        organization_id,        role,        name,        type,        password,        email,        level,        rfid,        enabled_flag    } = req.body;
+    const { organization_id, role, name, type, password, email, level, rfid, enabled_flag } = req.body;
     try {
         const result = await pool.query(
             `UPDATE mes_users SET organization_id = $1, role = $2, name = $3, type = $4, password = $5, email = $6, level = $7, rfid = $8, enabled_flag = $9 WHERE user_id = $10 RETURNING *`,
