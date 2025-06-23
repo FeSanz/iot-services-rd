@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
-const {selectFromDB, selectByIdFromDB} = require("../../models/sql-execute");
+const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
 
 //Obtener todas los registros
 router.get('/organizations', async (req, res) => {
 
-    const sqlQuery = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"
+    const sqlQuery = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId", 
+                            coordinates AS "Coordinates", company_id AS "CompanyId"
                              FROM MES_ORGANIZATIONS
                              ORDER BY name ASC`;
 
@@ -15,14 +16,15 @@ router.get('/organizations', async (req, res) => {
     res.status(statusCode).json(result);
 });
 
-// Obtener un registro por ID
-router.get('/organizations/:id', async (req, res) => {
-    const { id } = req.params;
-    const sqlQuery  = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId" 
-                             FROM MES_ORGANIZATIONS
-                             WHERE organization_id = $1`;
+// Obtener registros por compañia
+router.get('/organizations/:company', async (req, res) => {
+    const { company } = req.params;
+    const sqlQuery  = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", 
+                                bu_id AS "BUId", coordinates AS "Coordinates"
+                              FROM MES_ORGANIZATIONS
+                              WHERE company_id = $1`;
 
-    const result = await selectByIdFromDB(sqlQuery, id);
+    const result = await selectByParamsFromDB(sqlQuery, [company]);
     const statusCode = result.errorsExistFlag ? 500 : 200;
     res.status(statusCode).json(result);
 });
@@ -30,9 +32,9 @@ router.get('/organizations/:id', async (req, res) => {
 //Insertar multiples datos
 router.post('/organizations', async (req, res) => {
     try {
-        const organizations = req.body.items || [];
+        const payload = req.body.items || [];
 
-        if (organizations.length === 0) {
+        if (payload.length === 0) {
             return res.status(400).json({
                 errorsExistFlag: true,
                 message: 'No se proporcionaron datos',
@@ -40,18 +42,15 @@ router.post('/organizations', async (req, res) => {
             });
         }
 
-        // Obtener IDs existentes
-        const orgIds = organizations.map(org => org.OrganizationId);
-        const existingResult = await pool.query(
-            'SELECT organization_id FROM MES_ORGANIZATIONS WHERE organization_id = ANY($1)',
-            [orgIds]
-        );
-        const existingIds = new Set(existingResult.rows.map(row => row.organization_id));
+        // Obtener existentes
+        const orgRecieved = payload.map(org => org.OrganizationCode);
+        const orgExistResult = await pool.query('SELECT code FROM MES_ORGANIZATIONS WHERE code = ANY($1)', [orgRecieved]);
+        const orgExisting = new Set(orgExistResult.rows.map(row => row.organization_code));
 
         // Filtrar organizaciones nuevas
-        const newOrganizations = organizations.filter(org => !existingIds.has(org.OrganizationId));
+        const orgNews = payload.filter(org => !orgExisting.has(org.Code));
 
-        if (newOrganizations.length === 0) {
+        if (orgNews.length === 0) {
             return res.status(200).json({
                 errorsExistFlag: false,
                 message: 'Todas los datos proporcionados ya existen',
@@ -61,21 +60,21 @@ router.post('/organizations', async (req, res) => {
 
         // Preparar inserción
         const values = [];
-        const placeholders = newOrganizations.map((org, index) => {
-            const base = index * 6;
-            values.push(org.OrganizationId, org.Code, org.Name, org.Location, org.WorkMethod, org.BUId);
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+        const placeholders = orgNews.map((py, index) => {
+            const base = index * 7;
+            values.push(py.CompanyId, py.Code, py.Name, py.Location, py.WorkMethod, py.BUId, py.Coordinates);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_ORGANIZATIONS (organization_id, code, name, location, work_method, bu_id)
+            INSERT INTO MES_ORGANIZATIONS (company_id, code, name, location, work_method, bu_id, coordinates)
             VALUES ${placeholders.join(', ')}
         `, values);
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Registrado exitosamente [${newOrganizations.length}]`,
-            totalResults: newOrganizations.length,
+            message: `Registrado exitosamente [${orgNews.length}]`,
+            totalResults: orgNews.length,
         });
 
     } catch (error) {
