@@ -40,10 +40,11 @@ router.post('/login', async (req, res) => {
 
         // 4. Obtener organizaciones del usuario
         const company = await pool.query(`
-            SELECT C.company_id, C.name AS company_name,
+            SELECT C.company_id AS "CompanyId", C.name AS "Name",
             json_agg( json_build_object(
-                'organization_id', O.organization_id,
-                'organization_name', O.name, 'location', O.location, 'work_method', O.work_method, 'bu_id', O.bu_id, 'coordinates', O.coordinates)
+                'OrganizationId', O.organization_id,
+                'Code', O.code,
+                'Name', O.name, 'Location', O.location, 'WorkMethod', O.work_method, 'BUId', O.bu_id, 'Coordinates', O.coordinates)
             ) AS organizations FROM MES_USERS U
                 INNER JOIN MES_USERS_ORG UO ON U.user_id = UO.user_id
                 INNER JOIN MES_ORGANIZATIONS O ON UO.organization_id = O.organization_id
