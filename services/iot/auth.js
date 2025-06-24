@@ -8,7 +8,11 @@ router.post('/login', async (req, res) => {
     if (!email || !password) {
         return res.status(400).json({ message: 'Credenciales incompletas' });
     }
-
+    /*SELECT O.company_id
+    FROM MES_USERS U 
+    INNER JOIN MES_USERS_ORG UO ON UO.user_id = U.user_id 
+    INNER JOIN MES_ORGANIZATIONS O ON UO.organization_id = O.organization_id 
+    WHERE U.email = 'felipe.antonio.condor@gmail.com' AND U.password = '123456';*/
     try {
         // 1. Buscar al usuario
         const userResult = await pool.query(`
@@ -31,29 +35,29 @@ router.post('/login', async (req, res) => {
 
         // 3. Verificar si está habilitado
         if (user.enabled_flag !== 'Y') {
-            return res.status(403).json({errorsExistFlag: true, message: 'Cuenta desactivada' });
+            return res.status(403).json({ errorsExistFlag: true, message: 'Cuenta desactivada' });
         }
 
         // 4. Obtener organizaciones del usuario
-        const orgsResult = await pool.query(`
-            SELECT o.organization_id, o.code, o.name, o.location
-            FROM mes_users_org uo
-            JOIN mes_organizations o ON o.organization_id = uo.organization_id
-            WHERE uo.user_id = $1
-        `, [user.user_id]);
+        const company = await pool.query(`
+            SELECT O.company_id, O.name
+            FROM MES_USERS U 
+            INNER JOIN MES_USERS_ORG UO ON UO.user_id = U.user_id 
+            INNER JOIN MES_ORGANIZATIONS O ON UO.organization_id = O.organization_id 
+            WHERE U.user_id = $1;`, [user.user_id]);
 
         // 5. Construir respuesta
         return res.json({
             errorsExistFlag: false,
             message: 'OK',
-            user: {
+            data: {
                 userId: user.user_id,
                 email: user.email,
                 rol: user.rol,
                 name: user.name,
                 type: user.type,
                 level: user.level,
-                organizations: orgsResult.rows
+                company: company.rows[0]
             }
         });
     } catch (error) {

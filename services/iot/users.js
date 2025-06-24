@@ -3,14 +3,36 @@ const router = express.Router();
 const pool = require('../../database/pool');
 
 //obtener usuarios por organización
-router.get('/users/:organizationId', async (req, res) => {
-    const { organizationId } = req.params;
+router.get('/users', async (req, res) => {
+    const { companyId, organizationId } = req.query;
 
     try {
-        const result = await pool.query(
-            'SELECT * FROM mes_users WHERE organization_id = $1',
-            [organizationId]
-        );
+        const values = [];
+        let filters = [];
+
+        // Parse org IDs
+        let orgIds = [];
+        if (organizationId) {
+            orgIds = (organizationId).split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        }
+
+        if (companyId) {
+            filters.push(`u.company_id = $${values.length + 1}`);
+            values.push(companyId);
+        }
+
+        if (orgIds.length > 0) {
+            filters.push(`uo.organization_id = ANY($${values.length + 1})`);
+            values.push(orgIds);
+        }
+
+        const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
+
+        const query = `SELECT u.user_id, u.name, u.email, u.role, u.level, u.enabled_flag, json_agg(DISTINCT jsonb_build_object('org_id', o.organization_id,
+        'org_name', o.name, 'org_code', o.code)) AS organizations FROM mes_users u JOIN mes_users_org uo ON u.user_id = uo.user_id JOIN mes_organizations o ON o.organization_id = uo.organization_id
+        ${whereClause} GROUP BY u.user_id`;
+
+        const result = await pool.query(query, values);
 
         res.json({
             errorsExistFlag: false,
@@ -18,11 +40,14 @@ router.get('/users/:organizationId', async (req, res) => {
             totalResults: result.rows.length,
             items: result.rows
         });
+
     } catch (error) {
         console.error('Error al obtener usuarios:', error);
         res.status(500).json({ error: 'Error al consultar usuarios' });
     }
 });
+
+
 
 //Nuevo usuario
 router.post('/users', async (req, res) => {
@@ -42,7 +67,7 @@ router.post('/users', async (req, res) => {
         for (const org of organizations) {
             const orgId = parseInt(org.org_id);
             if (!isNaN(orgId)) {
-                
+
                 await client.query(
                     `INSERT INTO mes_users_org (user_id, organization_id) VALUES ($1, $2)`,
                     [user_id, orgId]
