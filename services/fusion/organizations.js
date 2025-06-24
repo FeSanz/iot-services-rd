@@ -43,12 +43,12 @@ router.post('/organizations', async (req, res) => {
         }
 
         // Obtener existentes
-        const orgRecieved = payload.map(org => org.OrganizationCode);
+        const orgRecieved = payload.map((element) => element.Code);
         const orgExistResult = await pool.query('SELECT code FROM MES_ORGANIZATIONS WHERE code = ANY($1)', [orgRecieved]);
-        const orgExisting = new Set(orgExistResult.rows.map(row => row.organization_code));
+        const orgExisting = new Set(orgExistResult.rows.map(row => row.code));
 
         // Filtrar organizaciones nuevas
-        const orgNews = payload.filter(org => !orgExisting.has(org.Code));
+        const orgNews = payload.filter(element => !orgExisting.has(element.Code));
 
         if (orgNews.length === 0) {
             return res.status(200).json({

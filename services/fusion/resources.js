@@ -34,9 +34,9 @@ router.get('/resourceMachines/:organization/:wc', async (req, res) => {
 //Insertar multiples datos
 router.post('/resourceMachines', async (req, res) => {
     try {
-        const dataFromDB = req.body.items || [];
+        const payload = req.body.items || [];
 
-        if (dataFromDB.length === 0) {
+        if (payload.length === 0) {
             return res.status(400).json({
                 errorsExistFlag: true,
                 message: 'No se proporcionaron datos',
@@ -44,15 +44,15 @@ router.post('/resourceMachines', async (req, res) => {
             });
         }
 
-        // Obtener IDs existentes
-        const ids = dataFromDB.map((element) => element.MachineId);
-        const existingResult = await pool.query('SELECT machine_id FROM MES_MACHINES WHERE machine_id = ANY($1)', [ids]);
-        const existingIds = new Set(existingResult.rows.map(row => row.machine_id));
+        // Obtener existentes
+        const machinesReceived = payload.map((element) => element.Code);
+        const machinesExistResult = await pool.query('SELECT code FROM MES_MACHINES WHERE code = ANY($1)', [machinesReceived]);
+        const machinesExisting = new Set(machinesExistResult.rows.map(row => row.code));
 
-        // Filtrar organizaciones nuevas
-        const newItemsDB = dataFromDB.filter(element => !existingIds.has(element.MachineId));
+        // Filtrar maquinas nuevas
+        const machinesNews = payload.filter(element => !machinesExisting.has(element.Code));
 
-        if (newItemsDB.length === 0) {
+        if (machinesNews.length === 0) {
             return res.status(200).json({
                 errorsExistFlag: false,
                 message: 'Todas los datos proporcionados ya existen',
@@ -62,21 +62,21 @@ router.post('/resourceMachines', async (req, res) => {
 
         // Preparar inserción
         const values = [];
-        const placeholders = newItemsDB.map((py, index) => {
-            const base = index * 8;
-            values.push(py.MachineId, py.OrganizationId, py.Code, py.Name, py.WorkCenterId, py.WorkCenter, py.Class, py.Token);
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+        const placeholders = machinesNews.map((py, index) => {
+            const base = index * 7;
+            values.push(py.OrganizationId, py.Code, py.Name, py.WorkCenterId, py.WorkCenter, py.Class, py.Token);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_MACHINES (machine_id, organization_id, code, name, work_center_id, work_center, class, token)
+            INSERT INTO MES_MACHINES (organization_id, code, name, work_center_id, work_center, class, token)
             VALUES ${placeholders.join(', ')}
         `, values);
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Registrado exitosamente [${newItemsDB.length}]`,
-            totalResults: newItemsDB.length,
+            message: `Registrado exitosamente [${machinesNews.length}]`,
+            totalResults: machinesNews.length,
         });
 
     } catch (error) {
