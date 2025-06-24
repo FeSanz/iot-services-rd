@@ -26,23 +26,29 @@ router.get('/users/:organizationId', async (req, res) => {
 
 //Nuevo usuario
 router.post('/users', async (req, res) => {
-    const { organization_id, role, name, type, password, email, level, rfid, enabled_flag } = req.body;
+    const { role, name, type, password, email, level, rfid, enabled_flag, organizations, company_id } = req.body;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        // 1. Insertar usuario
         const insertUserResult = await client.query(
-            `INSERT INTO mes_users (organization_id, role, name, type, password, email, level, rfid, enabled_flag)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             RETURNING user_id`,
-            [organization_id, role, name, type, password, email, level, rfid, enabled_flag || 'Y']
+            `INSERT INTO mes_users (role, name, type, password, email, level, rfid, enabled_flag, company_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING user_id`,
+            [role, name, type, password, email, level, rfid, enabled_flag || 'Y', company_id]
         );
-
         const user_id = insertUserResult.rows[0].user_id;
-        await client.query(
-            `INSERT INTO mes_users_org (user_id, organization_id) VALUES ($1, $2)`,
-            [user_id, organization_id]
-        );
-
+        // 2. Insertar relaciones user-org
+        for (const org of organizations) {
+            const orgId = parseInt(org.org_id);
+            if (!isNaN(orgId)) {
+                
+                await client.query(
+                    `INSERT INTO mes_users_org (user_id, organization_id) VALUES ($1, $2)`,
+                    [user_id, orgId]
+                );
+            }
+        }
         await client.query('COMMIT');
         res.status(201).json({
             errorsExistFlag: false,
@@ -58,6 +64,7 @@ router.post('/users', async (req, res) => {
         client.release();
     }
 });
+
 
 router.put('/users/:id', async (req, res) => {
     const userId = req.params.id;
