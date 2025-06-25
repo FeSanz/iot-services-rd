@@ -16,15 +16,35 @@ router.get('/items', async (req, res) => {
     res.status(statusCode).json(result);
 });
 
-// Obtener registros por tipo
-router.get('/items/:type', async (req, res) => {
-    const { type } = req.params;
-    const sqlQuery  = `SELECT item_id AS "ItemId", number AS "Number", description AS "Description",
-                              uom AS "UoM", type AS "Type", lot_control AS "LotControl"  
-                              FROM MES_ITEMS 
-                              WHERE type = $1 ORDER BY number ASC`;
+// Obtener registros por compañoa y tipo
+router.get('/items/:company/:type', async (req, res) => {
+    const { company, type } = req.params;
 
-    const result = await selectByParamsFromDB(sqlQuery, [type]);
+    // Validaciones
+    if (!company && !type) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Datos de compañía y tipo son requeridos',
+            totalResults: 0
+        });
+    }
+
+    const baseQuery = `SELECT item_id AS "ItemId", company_id AS "Company", number AS "Number", description AS "Description",
+                                     uom AS "UoM", type AS "Type", lot_control AS "LotControl"
+                              FROM MES_ITEMS
+                              WHERE company_id= $1`;
+    let sqlQuery;
+    let queryParams;
+
+    if (type === 'Todos') {
+        sqlQuery = `${baseQuery} ORDER BY number ASC`;
+        queryParams = [company];
+    } else {
+        sqlQuery = `${baseQuery} AND type = $2 ORDER BY number ASC`;
+        queryParams = [company, type];
+    }
+
+    const result = await selectByParamsFromDB(sqlQuery, queryParams);
     const statusCode = result.errorsExistFlag ? 500 : 200;
     res.status(statusCode).json(result);
 });
@@ -32,9 +52,19 @@ router.get('/items/:type', async (req, res) => {
 //Insertar multiples datos
 router.post('/items', async (req, res) => {
     try {
-        const dataFromDB = req.body.items || [];
+        const { CompanyId, items } = req.body;
+        const payload = items || [];
 
-        if (dataFromDB.length === 0) {
+        // Validaciones
+        if (!CompanyId) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionó el ID de compañia',
+                totalResults: 0
+            });
+        }
+
+        if (payload.length === 0) {
             return res.status(400).json({
                 errorsExistFlag: true,
                 message: 'No se proporcionaron datos',
@@ -42,15 +72,17 @@ router.post('/items', async (req, res) => {
             });
         }
 
-        // Obtener IDs existentes
-        const ids = dataFromDB.map((element) => element.ItemId);
-        const existingResult = await pool.query('SELECT item_id FROM MES_ITEMS WHERE item_id = ANY($1)', [ids]);
-        const existingIds = new Set(existingResult.rows.map(row => row.item_id));
+        // Obtener existentes
+        const itemsReceived = payload.map((element) => element.Number);
+        const itemsExistResult = await pool.query(`SELECT number FROM MES_ITEMS 
+                                                        WHERE company_id= $1 AND number = ANY($2)`,
+                                                   [CompanyId, itemsReceived]);
+        const itemsExisting = new Set(itemsExistResult.rows.map(row => row.number));
 
-        // Filtrar organizaciones nuevas
-        const newItemsDB = dataFromDB.filter(element => !existingIds.has(element.ItemId));
+        // Filtrar articulos nuevos
+        const itemsNews = payload.filter(element => !itemsExisting.has(element.Number));
 
-        if (newItemsDB.length === 0) {
+        if (itemsNews.length === 0) {
             return res.status(200).json({
                 errorsExistFlag: false,
                 message: 'Todas los datos proporcionados ya existen',
@@ -60,21 +92,21 @@ router.post('/items', async (req, res) => {
 
         // Preparar inserción
         const values = [];
-        const placeholders = newItemsDB.map((py, index) => {
+        const placeholders = itemsNews.map((py, index) => {
             const base = index * 6;
-            values.push(py.ItemId, py.Number, py.Description, py.UoM, py.Type, py.LotControl);
+            values.push(py.Number, py.Description, py.UoM, py.Type, py.LotControl, CompanyId);
             return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_ITEMS (item_id, number, description, uom, type, lot_control)
+            INSERT INTO MES_ITEMS (number, description, uom, type, lot_control, company_id)
             VALUES ${placeholders.join(', ')}
         `, values);
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Registrado exitosamente [${newItemsDB.length}]`,
-            totalResults: newItemsDB.length,
+            message: `Registrado exitosamente [${itemsNews.length}]`,
+            totalResults: itemsNews.length,
         });
 
     } catch (error) {

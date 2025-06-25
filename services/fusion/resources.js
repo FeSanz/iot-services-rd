@@ -20,6 +20,16 @@ router.get('/resourceMachines', async (req, res) => {
 // Obtener registros por organizacion y centro de trabajo
 router.get('/resourceMachines/:organization/:wc', async (req, res) => {
     const { organization, wc } = req.params;
+
+    // Validaciones
+    if (!organization && !wc) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Datos de organización y centro de trabajo son requeridos',
+            totalResults: 0
+        });
+    }
+
     const sqlQuery  = `SELECT machine_id AS "MachineId", organization_id AS "OrganizationId", code AS "Code", 
                                      name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter", 
                                      class AS "Class", token "Token"  
