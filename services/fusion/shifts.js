@@ -6,12 +6,11 @@ const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute")
 // Obtener registros por organizacion
 router.get('/shifts/:organization', async (req, res) => {
     const { organization } = req.params;
-    const sqlQuery  = `SELECT os.org_shift_id AS "OrgShiftId", s.shift_id AS "ShiftId", s.name AS "Name",
+    const sqlQuery  = `SELECT s.shift_id AS "ShiftId", s.name AS "Name",
                                      s.start_time AS "StartTime", s.end_time AS "EndTime", s.duration AS "Duration",
                                       s.enabled_flag AS "EnabledFlag"
-                               FROM MES_ORG_SHIFTS os
-                                        JOIN MES_SHIFTS s ON os.shift_id = s.shift_id
-                               WHERE os.organization_id = $1 
+                               FROM MES_SHIFTS s
+                               WHERE s.organization_id = $1 
                                ORDER BY s.start_time ASC`;
 
     const result = await selectByParamsFromDB(sqlQuery, [organization]);
@@ -42,68 +41,41 @@ router.post('/shifts', async (req, res) => {
             });
         }
 
-        // Extraer IDs de turnos del payload
-        const shiftIds = payload.map(shift => shift.ShiftId);
+        // Obtener existentes
+        const shiftsReceived = payload.map((element) => element.Name);
+        const shiftsExistResult = await pool.query(`SELECT name FROM MES_SHIFTS 
+                                                        WHERE organization_id = $1 AND name = ANY($2)`,
+                                                    [OrganizationId, shiftsReceived]);
+        const shiftsExisting = new Set(shiftsExistResult.rows.map(row => row.name));
 
-        // Verificar turnos que ya existen para esta organización
-        const existingOrgShifts = await pool.query(`SELECT shift_id FROM MES_ORG_SHIFTS 
-                                                    WHERE organization_id = $1 AND shift_id = ANY($2)
-                                                    `, [OrganizationId, shiftIds]);
+        // Filtrar turnos nuevos
+        const shiftsNews = payload.filter(element => !shiftsExisting.has(element.Name));
 
-        const existingOrgShiftIds = new Set(existingOrgShifts.rows.map(row => row.shift_id));
-
-        // Filtrar turnos que no existen para esta organización
-        const newShifts = payload.filter(shift => !existingOrgShiftIds.has(shift.ShiftId));
-
-        if (newShifts.length === 0) {
+        if (shiftsNews.length === 0) {
             return res.status(200).json({
                 errorsExistFlag: false,
-                message: 'Todos los turnos proporcionados ya existen para esta organización',
+                message: 'Todas los datos proporcionados ya existen',
                 totalResults: 0
             });
         }
 
-        // Verificar qué turnos ya existen en MES_SHIFTS
-        const newShiftIds = newShifts.map(shift => shift.ShiftId);
-        const existingShifts = await pool.query(`SELECT shift_id FROM MES_SHIFTS WHERE shift_id = ANY($1)`, [newShiftIds]);
-
-        const existingShiftIds = new Set(existingShifts.rows.map(row => row.shift_id));
-
-        // Separar turnos que necesitan ser insertados en MES_SHIFTS
-        const shiftsToInsert = newShifts.filter(shift => !existingShiftIds.has(shift.ShiftId));
-
-        // Insertar nuevos turnos en MES_SHIFTS (batch insert)
-        if (shiftsToInsert.length > 0) {
-            const shiftValues = [];
-            const shiftPlaceholders = shiftsToInsert.map((shift, index) => {
-                const base = index * 6;
-                shiftValues.push(shift.ShiftId, shift.Name, shift.StartTime, shift.EndTime, shift.Duration, shift.EnabledFlag);
-                return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
-            });
-
-            await pool.query(`
-                INSERT INTO MES_SHIFTS (shift_id, name, start_time, end_time, duration, enabled_flag)
-                VALUES ${shiftPlaceholders.join(', ')}
-            `, shiftValues);
-        }
-
-        // Insertar relaciones organización-turno (batch insert)
-        const orgShiftValues = [];
-        const orgShiftPlaceholders = newShifts.map((shift, index) => {
-            const base = index * 2;
-            orgShiftValues.push(OrganizationId, shift.ShiftId);
-            return `($${base + 1}, $${base + 2})`;
+        // Preparar inserción
+        const values = [];
+        const placeholders = shiftsNews.map((py, index) => {
+            const base = index * 6;
+            values.push(py.Name, py.StartTime, py.EndTime, py.Duration, py.EnabledFlag, OrganizationId);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_ORG_SHIFTS (organization_id, shift_id)
-            VALUES ${orgShiftPlaceholders.join(', ')}
-        `, orgShiftValues);
+            INSERT INTO MES_SHIFTS (name, start_time, end_time, duration, enabled_flag, organization_id)
+            VALUES ${placeholders.join(', ')}
+        `, values);
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Registrados exitosamente [${newShifts.length}]`,
-            totalResults: newShifts.length
+            message: `Registrado exitosamente [${shiftsNews.length}]`,
+            totalResults: shiftsNews.length,
         });
 
     } catch (error) {
@@ -118,35 +90,27 @@ router.post('/shifts', async (req, res) => {
 
 
 // Eliminar registro por ID de relación organización-turno
-router.delete('/shifts/:orgShiftId', async (req, res) => {
+router.delete('/shifts/:id', async (req, res) => {
     try {
-        const { orgShiftId } = req.params;
+        const { id } = req.params;
 
-        // Obtener el SHIFT_ID y eliminar la relación en una sola consulta
-        const shiftResult = await pool.query(`
-            DELETE FROM MES_ORG_SHIFTS 
-            WHERE org_shift_id = $1 
-            RETURNING shift_id
-        `, [orgShiftId]);
+        // Verificar si el registro existe
+        const checkResult = await pool.query('SELECT shift_id FROM MES_SHIFTS WHERE shift_id = $1', [id]);
 
-        if (shiftResult.rows.length === 0) {
+        if (checkResult.rows.length === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Relación organización-turno no encontrada',
+                message: 'Registro no encontrado',
                 totalResults: 0
             });
         }
 
-        const shiftId = shiftResult.rows[0].shift_id;
-
-        // Verificar si el turno está siendo utilizado en otras organizaciones y eliminarlo si no
-        await pool.query(`DELETE FROM MES_SHIFTS WHERE shift_id = $1 AND NOT EXISTS (
-                           SELECT 1 FROM MES_ORG_SHIFTS WHERE shift_id = $1)`, [shiftId]);
+        await pool.query('DELETE FROM MES_SHIFTS WHERE shift_id = $1', [id]);
 
         res.json({
             errorsExistFlag: false,
             message: 'Eliminado exitosamente',
-            totalResults: 1
+            totalResults: 0
         });
 
     } catch (error) {

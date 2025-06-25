@@ -30,7 +30,7 @@ router.post('/login', async (req, res) => {
         // 2. Verificar contraseña
         const validPassword = password == user.password;
         if (!validPassword) {
-            return res.status(401).json({ errorsExistFlag: true, message: 'Usuario no válido' });
+            return res.status(401).json({ errorsExistFlag: true, message: 'Usuario invalido' });
         }
 
         // 3. Verificar si está habilitado
@@ -45,7 +45,7 @@ router.post('/login', async (req, res) => {
                 'OrganizationId', O.organization_id,
                 'Code', O.code,
                 'Name', O.name, 'Location', O.location, 'WorkMethod', O.work_method, 'BUId', O.bu_id, 'Coordinates', O.coordinates)
-            ) AS organizations FROM MES_USERS U
+            ) AS "Organizations" FROM MES_USERS U
                 INNER JOIN MES_USERS_ORG UO ON U.user_id = UO.user_id
                 INNER JOIN MES_ORGANIZATIONS O ON UO.organization_id = O.organization_id
                 INNER JOIN MES_COMPANIES C ON O.company_id = C.company_id
@@ -56,13 +56,13 @@ router.post('/login', async (req, res) => {
         return res.json({
             errorsExistFlag: false,
             message: 'OK',
-            data: {
-                userId: user.user_id,
-                role: user.role,
-                name: user.name,
-                type: user.type,
-                level: user.level,
-                company: company.rows[0]
+            items: {
+                UserId: user.user_id,
+                Role: user.role,
+                Name: user.name,
+                Type: user.type,
+                Level: user.level,
+                Company: company.rows[0]
             }
         });
     } catch (error) {
