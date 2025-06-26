@@ -27,6 +27,7 @@ app.use('/api', require('./services/iot/sensor_data'));
 app.use('/api', require('./services/iot/sensors'));
 app.use('/api', require('./services/iot/users'));
 app.use('/api', require('./services/iot/dashboards'));
+app.use('/api', require('./services/iot/dashboardGroups'));
 app.use('/api', require('./services/iot/auth'));
 app.use('/api', require('./services/fusion/organizations'));
 app.use('/api', require('./services/fusion/resources'));

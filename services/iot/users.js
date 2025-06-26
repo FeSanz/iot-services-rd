@@ -164,21 +164,47 @@ router.put('/users/:user_id/status', async (req, res) => {
 
 router.delete('/users/:id', async (req, res) => {
     const userId = req.params.id;
+    const client = await pool.connect();
 
     try {
-        const result = await pool.query(
+        await client.query('BEGIN');
+
+        // 1. Eliminar relaciones con organizaciones
+        await client.query(
+            'DELETE FROM mes_users_org WHERE user_id = $1',
+            [userId]
+        );
+
+        // 2. Eliminar usuario
+        const result = await client.query(
             'DELETE FROM mes_users WHERE user_id = $1 RETURNING *',
             [userId]
         );
 
         if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Usuario no encontrado' });
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                errorsExistFlag: true,
+                error: 'Usuario no encontrado'
+            });
         }
 
-        res.json({ message: 'Usuario eliminado', result: result.rows[0] });
+        await client.query('COMMIT');
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            result: result.rows[0]
+        });
+
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error al eliminar usuario:', error);
-        res.status(500).json({ error: 'Error al eliminar usuario' });
+        res.status(500).json({
+            errorsExistFlag: true,
+            error: 'Error al eliminar usuario'
+        });
+    } finally {
+        client.release();
     }
 });
 
