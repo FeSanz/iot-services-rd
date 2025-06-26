@@ -4,16 +4,16 @@ const pool = require('../../database/pool');
 const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
 
 // Obtener registros por organizacion y estado
-router.get('/workOrders/:organization/:statusOrder', async (req, res) => {
-    const { organization, statusOrder } = req.params;
+router.get('/workOrders/:organization', async (req, res) => {
+    const { organization } = req.params;
     const sqlQuery  = `SELECT work_order_id AS "WorkOrderId", organization_id AS "OrganizationId", machine_id AS "MachineId",
                                      work_order_number AS "WorkOrderNumber", work_definition_id AS "WorkDefinitionId",
                                      item_id AS "ItemId", planned_quantity AS "PlannedQuantity", completed_quantity "CompletedQuantity",
-                                     start_date AS "StartDate", end_date AS "CompletionDate"
+                                     start_date AS "StartDate", end_date AS "CompletionDate", type AS "Type" 
                               FROM MES_WORK_ORDERS 
-                              WHERE organization_id = $1 AND status = $2`;
+                              WHERE organization_id = $1 AND status = 'RELEASED'`;
 
-    const result = await selectByParamsFromDB(sqlQuery, [organization, statusOrder]);
+    const result = await selectByParamsFromDB(sqlQuery, [organization]);
     const statusCode = result.errorsExistFlag ? 500 : 200;
     res.status(statusCode).json(result);
 });
@@ -31,15 +31,17 @@ router.post('/workOrders', async (req, res) => {
             });
         }
 
-        // Obtener IDs existentes
-        const ids = payload.map((element) => element.WorkOrderId);
-        const existingResult = await pool.query('SELECT work_order_id FROM MES_WORK_ORDERS WHERE work_order_id = ANY($1)', [ids]);
-        const existingIds = new Set(existingResult.rows.map(row => row.work_order_id));
+        // Obtener existentes
+        const ordersReceived = payload.map((element) => element.WorkOrderNumber);
+        const ordersExistResult = await pool.query(`SELECT work_order_number FROM MES_WORK_ORDERS 
+                                                    WHERE work_order_number = ANY($1)`,
+                                                    [ordersReceived]);
+        const ordersExisting = new Set(ordersExistResult.rows.map(row => row.work_order_number));
 
         // Filtrar ordenes nuevas
-        const newItemsDB = payload.filter(element => !existingIds.has(element.WorkOrderId));
+        const ordersNews = payload.filter(element => !ordersExisting.has(element.WorkOrderNumber));
 
-        if (newItemsDB.length === 0) {
+        if (ordersNews.length === 0) {
             return res.status(200).json({
                 errorsExistFlag: false,
                 message: 'Todas los datos proporcionados ya existen',
@@ -48,7 +50,7 @@ router.post('/workOrders', async (req, res) => {
         }
 
         const values = [];
-        const placeholders = newItemsDB.map((py, index) => {
+        const placeholders = ordersNews.map((py, index) => {
             const base = index * 11;
             values.push(py.WorkOrderId, py.OrganizationId, py.MachineId, py.WorkOrderNumber, py.WorkDefinitionId, py.ItemId,
                         py.PlannedQuantity, py.CompletedQuantity, py.Status, py.StartDate, py.CompletionDate);
@@ -78,8 +80,8 @@ router.post('/workOrders', async (req, res) => {
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Registrado exitosamente [${newItemsDB.length}]`,
-            totalResults: newItemsDB.length,
+            message: `Registrado exitosamente [${ordersNews.length}]`,
+            totalResults: ordersNews.length,
             itemsMissing: itemsMissing,
             resourcesMissing: resourcesMissing
         });
