@@ -107,28 +107,6 @@ router.post('/dashboardsGroup', async (req, res) => {
     }
 });
 
-//Consultar grupos de dashboards
-router.get('/dashboardsGroup/:organizationId', async (req, res) => {
-    const { organizationId } = req.params;
-    try {
-        const result = await pool.query(
-            `SELECT * FROM mes_dashboards_group 
-             WHERE organization_id = $1 
-             ORDER BY dashboard_group_id ASC`,
-            [organizationId]
-        );
-
-        res.json({
-            errorsExistFlag: false,
-            message: 'OK',
-            totalResults: result.rows.length,
-            items: result.rows
-        });
-    } catch (error) {
-        console.error('Error al obtener grupos:', error);
-        res.status(500).json({ error: 'Error al consultar dashboard groups' });
-    }
-});
 
 //Eliminar dashboards
 router.delete('/dashboardsGroup/:id', async (req, res) => {
