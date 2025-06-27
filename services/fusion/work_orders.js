@@ -52,7 +52,7 @@ router.post('/workOrders', async (req, res) => {
         const values = [];
         const placeholders = ordersNews.map((py, index) => {
             const base = index * 11;
-            values.push(py.WorkOrderId, py.OrganizationId, py.MachineId, py.WorkOrderNumber, py.WorkDefinitionId, py.ItemId,
+            values.push(py.OrganizationId, py.MachineId, py.WorkOrderNumber, py.WorkDefinitionId, py.ItemId,
                         py.PlannedQuantity, py.CompletedQuantity, py.Status, py.StartDate, py.CompletionDate);
             return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, 
                      $${base + 7}, $${base + 8}, $${base + 9}, 
@@ -140,6 +140,148 @@ router.delete('/workOrders/:id', async (req, res) => {
         });
     }
 });
+
+//Consultar maquinas por orden
+router.post('/workOrdersMachines', async (req, res) => {
+    try {
+        const payload = req.body.items || [];
+
+        if (payload.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron datos',
+                totalResults: 0
+            });
+        }
+
+        // Obtener existentes
+        const machinesReceived = payload.map((element) => element.MachineCode);
+        const machinesExistResult = await pool.query('SELECT machine_id, code FROM MES_MACHINES WHERE code = ANY($1)', [machinesReceived]);
+        const machinesMap = new Map(machinesExistResult.rows.map(row => [row.code, row.machine_id]));
+
+        // Construir resultado solo con máquinas existentes
+        const validMachines = [];
+
+        payload.forEach(item => {
+            const machineId = machinesMap.get(item.MachineCode);
+
+            if (machineId) {
+                validMachines.push({
+                    MachineId: machineId,
+                    Code: item.MachineCode,
+                    workOrderNumber: item.WorkOrderNumber
+                });
+            }
+        });
+
+        res.status(201).json({
+            errorsExistFlag: false,
+            message: `Ok`,
+            totalResults: validMachines.length,
+            items: validMachines
+        });
+
+    } catch (error) {
+        console.error('Error al procesar máquinas de OT:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error interno del servidor',
+            totalResults: 0
+        });
+    }
+});
+
+router.post('/WorkOrdersItems', async (req, res) => {
+    try {
+        const { CompanyId, items } = req.body;
+        const payload = items || [];
+
+        // Validaciones
+        if (!CompanyId) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionó el ID de compañia',
+                totalResults: 0
+            });
+        }
+
+        if (payload.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron datos',
+                totalResults: 0
+            });
+        }
+
+        // Obtener existentes
+        const itemsReceived = payload.map((element) => element.Number);
+        const itemsExistResult = await pool.query(`SELECT item_id AS "ItemId", number AS "Number", description AS "Description", uom AS "UoM" 
+                                                    FROM MES_ITEMS 
+                                                   WHERE company_id= $1 AND number = ANY($2)`,
+                                                   [CompanyId, itemsReceived]);
+        const itemsExisting = new Map(itemsExistResult.rows.map(row => [row.Number, row]));
+
+        // Filtrar articulos nuevos
+        const itemsNews = payload.filter(element => !itemsExisting.has(element.Number));
+
+        // Insertar artículos nuevos si existen
+        let newItemsWithIds = [];
+        if (itemsNews.length > 0) {
+            const values = [];
+            const placeholders = itemsNews.map((py, index) => {
+                const base = index * 4;
+                values.push(py.Number, py.Description, py.UoM, CompanyId);
+                return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`;
+            });
+
+            // Insertar y obtener los IDs generados
+            const insertNewItems = await pool.query(`
+                INSERT INTO MES_ITEMS (number, description, uom, company_id)
+                VALUES ${placeholders.join(', ')}
+                RETURNING item_id AS "ItemId", number AS "Number", description AS "Description", uom AS "UoM"
+            `, values);
+
+            newItemsWithIds = insertNewItems.rows;
+        }
+
+        // Construir respuesta combinanda existentes y nuevos
+        const responseItems = payload.map(op => {
+            // Buscar en existentes
+            let foundItem = itemsExisting.get(op.Number);
+
+            // Si no está en existentes, buscar en los recién insertados
+            if (!foundItem) {
+                foundItem = newItemsWithIds.find(newItem => newItem.Number === op.Number);
+            }
+
+            // Usar datos de la DB si existe, sino usar los enviados
+            return {
+                ItemId: foundItem ? foundItem.ItemId : null,
+                Number: op.Number,
+                Description: foundItem ? foundItem.Description : op.Description,
+                UoM: foundItem ? foundItem.UoM : op.UoM,
+                WorkOrderNumber: op.WorkOrderNumber
+            };
+        });
+
+        res.status(200).json({
+            errorsExistFlag: false,
+            message: itemsNews.length > 0 ?
+                `Nuevos: ${itemsNews.length} , Existentes: ${payload.length - itemsNews.length} ` : `Todos existentes`,
+            totalResults: payload.length,
+            items: responseItems,
+        });
+
+    } catch (error) {
+        console.error('Error al insertar dato:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al insertar dato: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
+
 
 //Exportar el router
 module.exports = router;
