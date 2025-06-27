@@ -2,16 +2,41 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 
-//Consultar grupos de dashboards
-router.get('/dashboardsGroup/:organizationId', async (req, res) => {
-    const { organizationId } = req.params;
+router.get('/dashboardsGroup/byOrganizations', async (req, res) => {
+    const orgParam = req.query.organizations;
+
+    // Validación
+    if (!orgParam) {
+        return res.status(400).json({ error: 'Se requiere el parámetro "organizations"' });
+    }
+
+    // Convertir a array de enteros
+    const organizationIds = String(orgParam)
+        .split(',')
+        .map(id => parseInt(id.trim()))
+        .filter(id => !isNaN(id));
+
+    if (organizationIds.length === 0) {
+        return res.status(400).json({ error: 'No se proporcionaron IDs de organización válidos' });
+    }
+
     try {
-        const result = await pool.query(
-            `SELECT * FROM mes_dashboards_group 
-             WHERE organization_id = $1 
-             ORDER BY dashboard_group_id ASC`,
-            [organizationId]
-        );
+        const result = await pool.query(`
+            SELECT 
+              g.dashboard_group_id,
+              g.name AS group_name,
+              g.description,
+              g.created_by,
+              g.created_date,
+              g.organization_id,
+              o.name AS organization_name
+            FROM mes_dashboards_group g
+            INNER JOIN mes_organizations o ON g.organization_id = o.organization_id
+            LEFT JOIN mes_dashboards d ON d.dashboard_group_id = g.dashboard_group_id
+            WHERE g.organization_id = ANY($1)
+            GROUP BY g.dashboard_group_id, g.name, g.description, g.created_by, g.created_date, g.organization_id, o.name
+            ORDER BY g.dashboard_group_id ASC
+        `, [organizationIds]);
 
         res.json({
             errorsExistFlag: false,
@@ -20,8 +45,8 @@ router.get('/dashboardsGroup/:organizationId', async (req, res) => {
             items: result.rows
         });
     } catch (error) {
-        console.error('Error al obtener grupos:', error);
-        res.status(500).json({ error: 'Error al consultar dashboard groups' });
+        console.error('Error al obtener grupos por organizaciones:', error);
+        res.status(500).json({ error: 'Error al consultar dashboard groups por organizaciones' });
     }
 });
 
@@ -58,7 +83,6 @@ router.get('/dashboardsGroup/company/:companyId', async (req, res) => {
         res.status(500).json({ error: 'Error al consultar dashboard groups por compañía' });
     }
 });
-
 //Agregar nuevo grupo de dashboards
 router.post('/dashboardsGroup', async (req, res) => {
     const { group_name, description, created_by, organization_id } = req.body;
@@ -80,6 +104,29 @@ router.post('/dashboardsGroup', async (req, res) => {
     } catch (error) {
         console.error('Error al crear grupo de dashboards:', error);
         res.status(500).json({ error: 'Error al crear grupo de dashboards' });
+    }
+});
+
+//Consultar grupos de dashboards
+router.get('/dashboardsGroup/:organizationId', async (req, res) => {
+    const { organizationId } = req.params;
+    try {
+        const result = await pool.query(
+            `SELECT * FROM mes_dashboards_group 
+             WHERE organization_id = $1 
+             ORDER BY dashboard_group_id ASC`,
+            [organizationId]
+        );
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: result.rows.length,
+            items: result.rows
+        });
+    } catch (error) {
+        console.error('Error al obtener grupos:', error);
+        res.status(500).json({ error: 'Error al consultar dashboard groups' });
     }
 });
 

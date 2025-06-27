@@ -139,13 +139,26 @@ router.get('/machinesAndSensorsByCompany/:companyId', async (req, res) => {
         res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
-router.post('/machinesAndSensorsByOrganizations', async (req, res) => {
-    const { organizationIds } = req.body;
+router.get('/machinesAndSensorsByOrganizations', async (req, res) => {
+    const { organizations } = req.query;
 
-    if (!Array.isArray(organizationIds) || organizationIds.length === 0) {
+    if (!organizations) {
         return res.status(400).json({
             errorsExistFlag: true,
-            message: 'Debe enviar un arreglo de organizationIds válido'
+            message: 'Debe enviar el parámetro "organizations" con IDs separados por coma'
+        });
+    }
+
+    // Convertir a array de números
+    const organizationIds = String(organizations)
+        .split(',')
+        .map(id => parseInt(id.trim()))
+        .filter(id => !isNaN(id));
+
+    if (organizationIds.length === 0) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'No se proporcionaron IDs válidos'
         });
     }
 
@@ -203,9 +216,13 @@ router.post('/machinesAndSensorsByOrganizations', async (req, res) => {
         });
     } catch (error) {
         console.error('Error al obtener datos:', error);
-        res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al consultar la base de datos'
+        });
     }
 });
+
 
 //obtener una máquina
 router.get('/machine/:machId', async (req, res) => {
