@@ -105,6 +105,53 @@ router.get('/sensorsData', async (req, res) => {
         res.status(500).json({ error: 'Error al consultar la base de datos' });
     }
 });
+router.post('/sensorsData', async (req, res) => {
+  const { token, items } = req.body;
+  // Validar token (si tienes lógica para ello)
+  if (!token || !items || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'Faltan parámetros o estructura incorrecta' });
+  }
+
+  try {
+    const results = [];
+
+    for (const { sensor_var, value } of items) {
+      // Consulta para obtener el sensor_id a partir del sensor_var
+      const sensorQuery = await pool.query(
+            `SELECT s.sensor_id
+             FROM mes_sensors s
+             JOIN mes_machines m ON s.machine_id = m.machine_id
+             WHERE m.token = $1 AND s.var = $2
+             LIMIT 1`,
+            [token, sensor_var]
+        );
+
+      const sensor = sensorQuery.rows[0];
+      
+      if (!sensor) {
+        results.push({ sensor_var, status: 'Sensor no encontrado' });
+        continue;
+      }
+
+      // Insertar el dato en la tabla de datos
+      await pool.query(`
+        INSERT INTO mes_sensor_data (sensor_id, value, date_time)
+        VALUES ($1, $2, NOW())
+      `, [sensor.sensor_id, value]);
+
+      results.push({ sensor_var, status: 'OK' });
+    }
+
+    res.status(200).json({
+      errorsExistFlag: false,
+      message: "OK"
+    });
+
+  } catch (error) {
+    console.error('Error al guardar datos:', error);
+    res.status(500).json({ error: 'Error al guardar en base de datos' });
+  }
+});
 
 //agregar nuevo dato de sensor
 router.post('/sensorData', async (req, res) => {

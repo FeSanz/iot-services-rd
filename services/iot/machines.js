@@ -19,7 +19,7 @@ router.get('/machines/:userId', async (req, res) => {
         });
     } catch (error) {
         console.error('Error al obtener datos:', error);
-        res.status(500).json({ error: 'Error al consultar la base de datos' });
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
 //obtener las máquinas y sus sensores por usuario
@@ -77,7 +77,133 @@ ORDER BY
         });
     } catch (error) {
         console.error('Error al obtener datos:', error);
-        res.status(500).json({ error: 'Error al consultar la base de datos' });
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
+    }
+});
+router.get('/machinesAndSensorsByCompany/:companyId', async (req, res) => {
+    const { companyId } = req.params;
+
+    try {
+        const resultado = await pool.query(
+            `
+      SELECT
+          m.machine_id,
+          m.name AS machine_name,
+          m.token AS token,
+          m.code AS machine_code,
+          m.organization_id,
+          COALESCE(
+              json_agg(
+                  json_build_object(
+                      'sensor_id', s.sensor_id,
+                      'sensor_name', s.name,
+                      'sensor_icon', s.icon,
+                      'sensor_var', s.var,
+                      'last_value', sd.value,
+                      'last_date_time', sd.date_time
+                  )
+              ) FILTER (WHERE s.sensor_id IS NOT NULL),
+              '[]'::json
+          ) AS sensors
+      FROM 
+          mes_machines m
+      JOIN 
+          mes_organizations o ON o.organization_id = m.organization_id
+      LEFT JOIN 
+          mes_sensors s ON s.machine_id = m.machine_id
+      LEFT JOIN LATERAL (
+          SELECT sd.value, sd.date_time
+          FROM mes_sensor_data sd
+          WHERE sd.sensor_id = s.sensor_id
+          ORDER BY sd.date_time DESC
+          LIMIT 1
+      ) sd ON TRUE
+      WHERE 
+          o.company_id = $1 AND m.token IS NOT NULL AND m.token <> ''
+      GROUP BY 
+          m.machine_id, m.name, m.code, m.token, m.organization_id
+      ORDER BY 
+          m.name;
+      `,
+            [companyId]
+        );
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: resultado.rows.length,
+            items: resultado.rows
+        });
+    } catch (error) {
+        console.error('Error al obtener datos:', error);
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
+    }
+});
+router.post('/machinesAndSensorsByOrganizations', async (req, res) => {
+    const { organizationIds } = req.body;
+
+    if (!Array.isArray(organizationIds) || organizationIds.length === 0) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Debe enviar un arreglo de organizationIds válido'
+        });
+    }
+
+    try {
+        const resultado = await pool.query(
+            `
+            SELECT
+                m.machine_id,
+                m.name AS machine_name,
+                m.token AS token,
+                m.code AS machine_code,
+                m.organization_id,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'sensor_id', s.sensor_id,
+                            'sensor_name', s.name,
+                            'sensor_icon', s.icon,
+                            'sensor_var', s.var,
+                            'last_value', sd.value,
+                            'last_date_time', sd.date_time
+                        )
+                    ) FILTER (WHERE s.sensor_id IS NOT NULL),
+                    '[]'::json
+                ) AS sensors
+            FROM 
+                mes_machines m
+            JOIN 
+                mes_organizations o ON o.organization_id = m.organization_id
+            LEFT JOIN 
+                mes_sensors s ON s.machine_id = m.machine_id
+            LEFT JOIN LATERAL (
+                SELECT sd.value, sd.date_time
+                FROM mes_sensor_data sd
+                WHERE sd.sensor_id = s.sensor_id
+                ORDER BY sd.date_time DESC
+                LIMIT 1
+            ) sd ON TRUE
+            WHERE 
+                o.organization_id = ANY($1)
+                AND m.token IS NOT NULL AND m.token <> ''
+            GROUP BY 
+                m.machine_id, m.name, m.code, m.token, m.organization_id
+            ORDER BY 
+                m.name;
+            `,
+            [organizationIds]
+        );
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: resultado.rows.length,
+            items: resultado.rows
+        });
+    } catch (error) {
+        console.error('Error al obtener datos:', error);
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
 
@@ -98,13 +224,13 @@ router.get('/machine/:machId', async (req, res) => {
         });
     } catch (error) {
         console.error('Error al obtener datos:', error);
-        res.status(500).json({ error: 'Error al consultar la base de datos' });
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
 
 //agregar nueva máquina
 router.post('/machines', async (req, res) => {
-    const { user_id, organization_id, code, name, token, work_center_id, work_center, machine_class } = req.body;
+    const { organization_id, code, name, token, work_center_id, work_center, machine_class } = req.body;
     try {
         const result = await pool.query(
             `INSERT INTO MES_MACHINES(organization_id, code, name, token, work_center_id, work_center, class
@@ -112,21 +238,15 @@ router.post('/machines', async (req, res) => {
         RETURNING * `,
             [organization_id, code, name, token, work_center_id, work_center, machine_class]
         );
-        await pool.query(
-            `INSERT INTO MES_USERS_MACHINES(user_id, machine_id) VALUES($1, $2)
-        RETURNING * `,
-            [user_id, result.rows[0].machine_id]
-        );
-
         res.status(201).json({
-            existError: false,
+            errorsExistFlag: false,
             message: "OK",
             result: result.rows[0]
         });
     } catch (err) {
         console.error('Error al crear máquina', err);
         res.status(500).json({
-            existError: true,
+            errorsExistFlag: true,
             message: "Error",
         });
     }
@@ -135,41 +255,62 @@ router.post('/machines', async (req, res) => {
 //actualizar máquina
 router.put('/machines/:id', async (req, res) => {
     const machineId = req.params.id;
-    const {
-        user_id,
-        organization_id,
-        code,
-        name,
-        work_center_id,
-        work_center,
-        machine_class
-    } = req.body;
+    const { machine_name, sensors } = req.body;
 
+    const client = await pool.connect();
     try {
-        const result = await pool.query(
-            `UPDATE MES_MACHINES
-             SET user_id = $1,
-            organization_id = $2,
-            code = $3,
-            name = $4,
-            work_center_id = $5,
-            work_center = $6,
-            class = $7
-             WHERE machine_id = $8
-        RETURNING * `,
-            [user_id, organization_id, code, name, work_center_id, work_center, machine_class, machineId]
+        await client.query('BEGIN');
+
+        // 1. Actualizar solo el nombre de la máquina
+        const updateMachine = await client.query(
+            `UPDATE mes_machines
+             SET name = $1
+             WHERE machine_id = $2
+             RETURNING *`,
+            [machine_name, machineId]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Máquina no encontrada' });
+        if (updateMachine.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ errorsExistFlag: true, message: 'Máquina no encontrada' });
         }
 
-        res.json({ message: 'Máquina actualizada correctamente', result: result.rows[0] });
+        // 2. Procesar sensores
+        for (const sensor of sensors) {
+            const { sensor_id, sensor_name, sensor_icon, sensor_var } = sensor;
+
+            if (sensor_id) {
+                // Si tiene ID, actualizar
+                await client.query(
+                    `UPDATE mes_sensors
+                     SET name = $1, icon = $2, var = $3
+                     WHERE sensor_id = $4 AND machine_id = $5`,
+                    [sensor_name, sensor_icon, sensor_var, sensor_id, machineId]
+                );
+            } else {
+                // Si no tiene ID, insertar uno nuevo
+                await client.query(
+                    `INSERT INTO mes_sensors (machine_id, name, icon, var)
+                     VALUES ($1, $2, $3, $4)`,
+                    [machineId, sensor_name, sensor_icon, sensor_var]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK'
+        });
     } catch (err) {
-        console.error('Error al actualizar máquina:', err);
-        res.status(500).json({ error: 'Error al actualizar máquina' });
+        await client.query('ROLLBACK');
+        console.error('Error al actualizar máquina y sensores:', err);
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al actualizar máquina y sensores' });
+    } finally {
+        client.release();
     }
 });
+
 
 //Eliminar máquina
 router.delete('/machines/:id', async (req, res) => {
@@ -183,7 +324,7 @@ router.delete('/machines/:id', async (req, res) => {
 
         if (result.rowCount === 0) {
             return res.status(404).json({
-                existError: true,
+                errorsExistFlag: true,
                 message: 'Máquina no encontrado'
             });
         }
@@ -195,7 +336,7 @@ router.delete('/machines/:id', async (req, res) => {
         });
     } catch (error) {
         console.error('Error al eliminar sensor:', error);
-        res.status(500).json({ error: 'Error al eliminar sensor' });
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al eliminar sensor' });
     }
 });
 module.exports = router;

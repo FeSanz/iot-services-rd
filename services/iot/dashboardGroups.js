@@ -61,7 +61,7 @@ router.get('/dashboardsGroup/company/:companyId', async (req, res) => {
 
 //Agregar nuevo grupo de dashboards
 router.post('/dashboardsGroup', async (req, res) => {
-    const { name, description, created_by, organization_id } = req.body;
+    const { group_name, description, created_by, organization_id } = req.body;
 
     try {
         const result = await pool.query(
@@ -69,7 +69,7 @@ router.post('/dashboardsGroup', async (req, res) => {
              (name, description, created_by, created_date, organization_id) 
              VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
              RETURNING *`,
-            [name, description, created_by, organization_id]
+            [group_name, description, created_by, organization_id]
         );
 
         res.status(201).json({
@@ -113,7 +113,7 @@ router.delete('/dashboardsGroup/:id', async (req, res) => {
 //actualizar dashboards
 router.put('/dashboardsGroup/:id', async (req, res) => {
     const groupId = req.params.id;
-    const { name, description } = req.body;
+    const { group_name, description } = req.body;
 
     try {
         const result = await pool.query(
@@ -121,7 +121,7 @@ router.put('/dashboardsGroup/:id', async (req, res) => {
              SET name = $1, description = $2 
              WHERE dashboard_group_id = $3 
              RETURNING *`,
-            [name, description, groupId]
+            [group_name, description, groupId]
         );
 
         if (result.rows.length === 0) {
