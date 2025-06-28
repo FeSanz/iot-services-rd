@@ -106,52 +106,64 @@ router.get('/sensorsData', async (req, res) => {
     }
 });
 router.post('/sensorsData', async (req, res) => {
-  const { token, items } = req.body;
-  // Validar token (si tienes lógica para ello)
-  if (!token || !items || !Array.isArray(items)) {
-    return res.status(400).json({ error: 'Faltan parámetros o estructura incorrecta' });
-  }
+    const { token, items } = req.body;
 
-  try {
-    const results = [];
-
-    for (const { sensor_var, value } of items) {
-      // Consulta para obtener el sensor_id a partir del sensor_var
-      const sensorQuery = await pool.query(
-            `SELECT s.sensor_id
-             FROM mes_sensors s
-             JOIN mes_machines m ON s.machine_id = m.machine_id
-             WHERE m.token = $1 AND s.var = $2
-             LIMIT 1`,
-            [token, sensor_var]
-        );
-
-      const sensor = sensorQuery.rows[0];
-      
-      if (!sensor) {
-        results.push({ sensor_var, status: 'Sensor no encontrado' });
-        continue;
-      }
-
-      // Insertar el dato en la tabla de datos
-      await pool.query(`
-        INSERT INTO mes_sensor_data (sensor_id, value, date_time)
-        VALUES ($1, $2, NOW())
-      `, [sensor.sensor_id, value]);
-
-      results.push({ sensor_var, status: 'OK' });
+    if (!token || !items || !Array.isArray(items)) {
+        return res.status(400).json({ error: 'Faltan parámetros o estructura incorrecta' });
     }
 
-    res.status(200).json({
-      errorsExistFlag: false,
-      message: "OK"
-    });
+    try {
+        const results = [];
 
-  } catch (error) {
-    console.error('Error al guardar datos:', error);
-    res.status(500).json({ error: 'Error al guardar en base de datos' });
-  }
+        for (const { sensor_var, value } of items) {
+            // Buscar sensor
+            const sensorQuery = await pool.query(`
+                SELECT s.sensor_id
+                FROM mes_sensors s
+                JOIN mes_machines m ON s.machine_id = m.machine_id
+                WHERE m.token = $1 AND s.var = $2
+                LIMIT 1
+            `, [token, sensor_var]);
+
+            const sensor = sensorQuery.rows[0];
+
+            if (!sensor) {
+                results.push({ sensor_var, status: 'Sensor no encontrado' });
+                continue;
+            }
+
+            // Insertar el dato del sensor y retornar el valor insertado
+            const insertResult = await pool.query(`
+                INSERT INTO mes_sensor_data (sensor_id, value, date_time)
+                VALUES ($1, $2, NOW())
+                RETURNING value, date_time
+            `, [sensor.sensor_id, value]);
+
+            const payload = {
+                sensorId: sensor.sensor_id,
+                sensor_var,
+                value: insertResult.rows[0].value,
+                time: insertResult.rows[0].date_time
+            };
+
+            // Notificar a los usuarios suscritos a este sensor
+            notifyToUsers(sensor.sensor_id, { data: payload });
+
+            results.push({ sensor_var, status: 'OK' });
+        }
+
+        res.status(200).json({
+            errorsExistFlag: false,
+            message: 'OK',
+            items: results
+        });
+
+    } catch (error) {
+        console.error('Error al guardar datos:', error);
+        res.status(500).json({ error: 'Error al guardar en base de datos' });
+    }
 });
+
 
 //agregar nuevo dato de sensor
 router.post('/sensorData', async (req, res) => {
