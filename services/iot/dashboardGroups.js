@@ -5,12 +5,10 @@ const pool = require('../../database/pool');
 router.get('/dashboardsGroup/byOrganizations', async (req, res) => {
     const orgParam = req.query.organizations;
 
-    // Validación
     if (!orgParam) {
         return res.status(400).json({ error: 'Se requiere el parámetro "organizations"' });
     }
 
-    // Convertir a array de enteros
     const organizationIds = String(orgParam)
         .split(',')
         .map(id => parseInt(id.trim()))
@@ -29,13 +27,12 @@ router.get('/dashboardsGroup/byOrganizations', async (req, res) => {
               g.created_by,
               g.created_date,
               g.organization_id,
+              g.index,
               o.name AS organization_name
             FROM mes_dashboards_group g
             INNER JOIN mes_organizations o ON g.organization_id = o.organization_id
-            LEFT JOIN mes_dashboards d ON d.dashboard_group_id = g.dashboard_group_id
             WHERE g.organization_id = ANY($1)
-            GROUP BY g.dashboard_group_id, g.name, g.description, g.created_by, g.created_date, g.organization_id, o.name
-            ORDER BY g.dashboard_group_id ASC
+            ORDER BY g.index ASC NULLS LAST
         `, [organizationIds]);
 
         res.json({
@@ -49,7 +46,6 @@ router.get('/dashboardsGroup/byOrganizations', async (req, res) => {
         res.status(500).json({ error: 'Error al consultar dashboard groups por organizaciones' });
     }
 });
-
 // Consultar grupos de dashboards por companyId (incluye todos sus dashboards agrupados)
 router.get('/dashboardsGroup/company/:companyId', async (req, res) => {
     const { companyId } = req.params;
@@ -88,12 +84,22 @@ router.post('/dashboardsGroup', async (req, res) => {
     const { group_name, description, created_by, organization_id } = req.body;
 
     try {
+        // Obtener el último índice actual
+        const maxResult = await pool.query(
+            `SELECT COALESCE(MAX(index), 0) + 1 AS next_index
+             FROM mes_dashboards_group
+             WHERE organization_id = $1`,
+            [organization_id]
+        );
+
+        const nextIndex = maxResult.rows[0].next_index;
+
         const result = await pool.query(
             `INSERT INTO mes_dashboards_group 
-             (name, description, created_by, created_date, organization_id) 
-             VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4)
+             (name, description, created_by, created_date, organization_id, index) 
+             VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5)
              RETURNING *`,
-            [group_name, description, created_by, organization_id]
+            [group_name, description, created_by, organization_id, nextIndex]
         );
 
         res.status(201).json({
@@ -106,7 +112,6 @@ router.post('/dashboardsGroup', async (req, res) => {
         res.status(500).json({ error: 'Error al crear grupo de dashboards' });
     }
 });
-
 
 //Eliminar dashboards
 router.delete('/dashboardsGroup/:id', async (req, res) => {
@@ -134,7 +139,47 @@ router.delete('/dashboardsGroup/:id', async (req, res) => {
         res.status(500).json({ error: 'Error al eliminar grupo de dashboards' });
     }
 });
+//reordenar el grupo de tableros
+router.put('/dashboardsGroup/order', async (req, res) => {
+    const { items } = req.body;
 
+    if (!Array.isArray(items)) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Estructura de datos inválida'
+        });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        for (const { dashboard_group_id, index } of items) {
+            await client.query(
+                `UPDATE mes_dashboards_group
+                 SET index = $1
+                 WHERE dashboard_group_id = $2`,
+                [index, dashboard_group_id]
+            );
+        }
+
+        await client.query('COMMIT');
+
+        res.status(200).json({
+            errorsExistFlag: false,
+            message: 'OK',
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al actualizar orden de grupos:', error);
+        res.status(500).json({
+            errorsExistFlag: true, error: 'Error al actualizar orden'
+        });
+    } finally {
+        client.release();
+    }
+});
 //actualizar dashboards
 router.put('/dashboardsGroup/:id', async (req, res) => {
     const groupId = req.params.id;
