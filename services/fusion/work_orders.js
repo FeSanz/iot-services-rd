@@ -6,12 +6,33 @@ const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute")
 // Obtener registros por organizacion y estado
 router.get('/workOrders/:organization', async (req, res) => {
     const { organization } = req.params;
-    const sqlQuery  = `SELECT work_order_id AS "WorkOrderId", organization_id AS "OrganizationId", machine_id AS "MachineId",
-                                     work_order_number AS "WorkOrderNumber", work_definition_id AS "WorkDefinitionId",
-                                     item_id AS "ItemId", planned_quantity AS "PlannedQuantity", completed_quantity "CompletedQuantity",
-                                     start_date AS "StartDate", end_date AS "CompletionDate", type AS "Type" 
-                              FROM MES_WORK_ORDERS 
-                              WHERE organization_id = $1 AND status = 'RELEASED'`;
+    const sqlQuery  = `SELECT
+                               wo.work_order_id AS "WorkOrderId",
+                               wo.machine_id AS "MachineId",
+                               wo.work_order_number AS "WorkOrderNumber",
+                               wo.work_definition_id AS "WorkDefinitionId",
+                               wo.item_id AS "ItemId",
+                               wo.planned_quantity AS "PlannedQuantity",
+                               wo.completed_quantity AS "CompletedQuantity",
+                               wo.start_date AS "StartDate",
+                               wo.end_date AS "CompletionDate",
+                               wo.type AS "Type",
+                               -- Datos de MES_MACHINES
+                               wo.machine_id AS "ResourceId",
+                               m.code AS "ResourceCode",
+                               m.work_center_id AS "WorkCenterId",
+                               m.work_center AS "WorkCenter",
+                               -- Datos de MES_ITEMS
+                               wo.item_id AS "ItemId",
+                               i.number AS "ItemNumber",
+                               i.description AS "Description",
+                               i.uom AS "UoM"
+                           FROM MES_WORK_ORDERS wo
+                                    LEFT JOIN MES_MACHINES m ON wo.machine_id = m.machine_id
+                                    LEFT JOIN MES_ITEMS i ON wo.item_id = i.item_id
+                           WHERE wo.organization_id = $1
+                             AND (wo.status = 'RELEASED' OR wo.status = 'IN_PROCESS')
+                           ORDER BY wo.work_order_id`;
 
     const result = await selectByParamsFromDB(sqlQuery, [organization]);
     const statusCode = result.errorsExistFlag ? 500 : 200;
@@ -53,37 +74,24 @@ router.post('/workOrders', async (req, res) => {
         const placeholders = ordersNews.map((py, index) => {
             const base = index * 11;
             values.push(py.OrganizationId, py.MachineId, py.WorkOrderNumber, py.WorkDefinitionId, py.ItemId,
-                        py.PlannedQuantity, py.CompletedQuantity, py.Status, py.StartDate, py.CompletionDate);
+                        py.PlannedQuantity, py.CompletedQuantity, py.Status, py.StartDate, py.CompletionDate, py.Type);
             return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, 
-                     $${base + 7}, $${base + 8}, $${base + 9}, 
-                     TO_TIMESTAMP($${base + 10}, 'DD/MM/YYYY HH24:MI:SS'), 
-                     TO_TIMESTAMP($${base + 11}, 'DD/MM/YYYY HH24:MI:SS'))`;
+                     $${base + 7}, $${base + 8},
+                     TO_TIMESTAMP($${base + 9}, 'DD/MM/YYYY HH24:MI:SS'), 
+                     TO_TIMESTAMP($${base + 10}, 'DD/MM/YYYY HH24:MI:SS'), $${base + 11})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_WORK_ORDERS (work_order_id, organization_id, machine_id, work_order_number, work_definition_id, item_id,
-                                         planned_quantity, completed_quantity, status, start_date, end_date)
+            INSERT INTO MES_WORK_ORDERS (organization_id, machine_id, work_order_number, work_definition_id, item_id,
+                                         planned_quantity, completed_quantity, status, start_date, end_date, type)
             VALUES ${placeholders.join(', ')}
         `, values);
 
-        //Articulos faltantes por registrar en la DB
-        const itemsRecieved = payload.map((element) => element.ItemId);
-        const itemsQuery = await pool.query('SELECT item_id FROM MES_ITEMS WHERE item_id = ANY($1)', [itemsRecieved]);
-        const itemsExisting = new Set(itemsQuery.rows.map(row => row.item_id));
-        const itemsMissing = payload.filter(element => !itemsExisting.has(element.ItemId))
-
-        //Maquinas faltantes por registrar en la DB
-        const resourcesRecieved = payload.map((element) => element.ItemId);
-        const resourcesQuery = await pool.query('SELECT item_id FROM MES_ITEMS WHERE item_id = ANY($1)', [resourcesRecieved]);
-        const resourcesExisting = new Set(resourcesQuery.rows.map(row => row.item_id));
-        const resourcesMissing = payload.filter(element => !resourcesExisting.has(element.ItemId))
 
         res.status(201).json({
             errorsExistFlag: false,
             message: `Registrado exitosamente [${ordersNews.length}]`,
             totalResults: ordersNews.length,
-            itemsMissing: itemsMissing,
-            resourcesMissing: resourcesMissing
         });
 
     } catch (error) {
@@ -215,8 +223,7 @@ router.post('/WorkOrdersItems', async (req, res) => {
 
         // Obtener existentes
         const itemsReceived = payload.map((element) => element.Number);
-        const itemsExistResult = await pool.query(`SELECT item_id AS "ItemId", number AS "Number", description AS "Description", uom AS "UoM" 
-                                                    FROM MES_ITEMS 
+        const itemsExistResult = await pool.query(`SELECT item_id AS "ItemId", number AS "Number" FROM MES_ITEMS 
                                                    WHERE company_id= $1 AND number = ANY($2)`,
                                                    [CompanyId, itemsReceived]);
         const itemsExisting = new Map(itemsExistResult.rows.map(row => [row.Number, row]));
@@ -238,7 +245,7 @@ router.post('/WorkOrdersItems', async (req, res) => {
             const insertNewItems = await pool.query(`
                 INSERT INTO MES_ITEMS (number, description, uom, company_id)
                 VALUES ${placeholders.join(', ')}
-                RETURNING item_id AS "ItemId", number AS "Number", description AS "Description", uom AS "UoM"
+                RETURNING item_id AS "ItemId", number AS "Number"
             `, values);
 
             newItemsWithIds = insertNewItems.rows;
@@ -258,8 +265,6 @@ router.post('/WorkOrdersItems', async (req, res) => {
             return {
                 ItemId: foundItem ? foundItem.ItemId : null,
                 Number: op.Number,
-                Description: foundItem ? foundItem.Description : op.Description,
-                UoM: foundItem ? foundItem.UoM : op.UoM,
                 WorkOrderNumber: op.WorkOrderNumber
             };
         });
