@@ -34,7 +34,7 @@ router.get('/resourceMachines/:organization/:wc', async (req, res) => {
                                      name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter", 
                                      class AS "Class", token "Token"  
                               FROM MES_MACHINES 
-                              WHERE organization_id = $1 AND work_center_id = $2`;
+                              WHERE organization_id = $1 AND work_center_id = $2 ORDER BY code ASC`;
 
     const result = await selectByParamsFromDB(sqlQuery, [organization, wc]);
     const statusCode = result.errorsExistFlag ? 500 : 200;

@@ -22,7 +22,7 @@ router.get('/organizations/:company', async (req, res) => {
     const sqlQuery  = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", 
                                 bu_id AS "BUId", coordinates AS "Coordinates"
                               FROM MES_ORGANIZATIONS
-                              WHERE company_id = $1`;
+                              WHERE company_id = $1 ORDER BY code ASC`;
 
     const result = await selectByParamsFromDB(sqlQuery, [company]);
     const statusCode = result.errorsExistFlag ? 500 : 200;

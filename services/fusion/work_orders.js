@@ -32,7 +32,7 @@ router.get('/workOrders/:organization', async (req, res) => {
                                     LEFT JOIN MES_ITEMS i ON wo.item_id = i.item_id
                            WHERE wo.organization_id = $1
                              AND (wo.status = 'RELEASED' OR wo.status = 'IN_PROCESS')
-                           ORDER BY wo.work_order_id`;
+                           ORDER BY wo.work_order_id ASC`;
 
     const result = await selectByParamsFromDB(sqlQuery, [organization]);
     const statusCode = result.errorsExistFlag ? 500 : 200;
