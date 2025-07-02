@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
-const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
+const {selectByParamsFromDB} = require("../../models/sql-execute");
 
 // Obtener registros por organizacion y estado
 router.get('/workOrders/:organization', async (req, res) => {
@@ -76,9 +76,7 @@ router.post('/workOrders', async (req, res) => {
             values.push(py.OrganizationId, py.MachineId, py.WorkOrderNumber, py.WorkDefinitionId, py.ItemId,
                         py.PlannedQuantity, py.CompletedQuantity, py.Status, py.StartDate, py.CompletionDate, py.Type);
             return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, 
-                     $${base + 7}, $${base + 8},
-                     TO_TIMESTAMP($${base + 9}, 'DD/MM/YYYY HH24:MI:SS'), 
-                     TO_TIMESTAMP($${base + 10}, 'DD/MM/YYYY HH24:MI:SS'), $${base + 11})`;
+                     $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11})`;
         });
 
         await pool.query(`
