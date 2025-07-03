@@ -4,26 +4,40 @@ const pool = require('../../database/pool');
 
 //obtener usuarios por organización
 router.get('/users', async (req, res) => {
-    const { companyId } = req.query;
+    const { organizations } = req.query;
 
     try {
-        if (!companyId) {
+        if (!organizations) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'Parámetro companyId requerido'
+                message: 'Parámetro organizations requerido'
             });
         }
 
-        const values = [companyId];
+        // Parsear el parámetro de string a array de enteros
+        const orgArray = organizations
+            .split(',')
+            .map(id => parseInt(id.trim()))
+            .filter(id => !isNaN(id));
 
-        const query = `SELECT u.user_id, u.name, u.email, u.role, u.type, u.level, u.rfid, u.password, u.enabled_flag,
-        json_agg(DISTINCT jsonb_build_object('org_id', o.organization_id, 'org_name', o.name, 'org_code', o.code)) AS organizations
+        if (orgArray.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'El parámetro organizations no contiene IDs válidos'
+            });
+        }
+
+        const query = `
+      SELECT u.user_id, u.name, u.email, u.role, u.type, u.level, u.rfid, u.password, u.enabled_flag,
+             json_agg(DISTINCT jsonb_build_object('org_id', o.organization_id, 'org_name', o.name, 'org_code', o.code)) AS organizations
       FROM mes_users u
       JOIN mes_users_org uo ON u.user_id = uo.user_id
       JOIN mes_organizations o ON o.organization_id = uo.organization_id
-      WHERE o.company_id = $1
-      GROUP BY u.user_id`;
+      WHERE o.organization_id = ANY($1)
+      GROUP BY u.user_id;
+    `;
 
+        const values = [orgArray];
         const result = await pool.query(query, values);
 
         res.json({
@@ -39,20 +53,21 @@ router.get('/users', async (req, res) => {
     }
 });
 
+
 //Nuevo usuario
 router.post('/users', async (req, res) => {
-    const { role, name, type, password, email, level, rfid, enabled_flag, organizations, company_id } = req.body;
+    const { role, name, type, password, email, level, rfid, enabled_flag, organizations } = req.body;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         // 1. Insertar usuario
         const insertUserResult = await client.query(
-            `INSERT INTO mes_users (role, name, type, password, email, level, rfid, enabled_flag, company_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO mes_users (role, name, type, password, email, level, rfid, enabled_flag)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING user_id`,
-            [role, name, type, password, email, level, rfid, enabled_flag || 'Y', company_id]
+            [role, name, type, password, email, level, rfid, enabled_flag || 'Y']
         );
-        const user_id = insertUserResult.rows[0].user_id;
+        const user_id = insertUserResult.rows[0].user_id;        
         // 2. Insertar relaciones user-org
         for (const org of organizations) {
             const orgId = parseInt(org.org_id);
@@ -83,7 +98,7 @@ router.post('/users', async (req, res) => {
 
 router.put('/users/:user_id', async (req, res) => {
     const { user_id } = req.params;
-    const { role, name, type, password, email, level, rfid, enabled_flag, organizations, company_id } = req.body;
+    const { role, name, type, password, email, level, rfid, enabled_flag, organizations } = req.body;
 
     const client = await pool.connect();
 
@@ -93,9 +108,9 @@ router.put('/users/:user_id', async (req, res) => {
         // 1. Actualizar usuario
         await client.query(
             `UPDATE mes_users 
-       SET role = $1, name = $2, type = $3, password = $4, email = $5, level = $6, rfid = $7, enabled_flag = $8, company_id = $9
+       SET role = $1, name = $2, type = $3, password = $4, email = $5, level = $6, rfid = $7, enabled_flag = $8,
        WHERE user_id = $10`,
-            [role, name, type, password, email, level, rfid, enabled_flag || 'Y', company_id, user_id]
+            [role, name, type, password, email, level, rfid, enabled_flag || 'Y', user_id]
         );
 
         // 2. Eliminar relaciones antiguas
