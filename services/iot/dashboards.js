@@ -77,6 +77,38 @@ router.delete('/dashboards/:id', async (req, res) => {
     }
 });
 
+// Actualiza el tamaño (colSize) de todos los tableros
+router.put('/dashboards/size', async (req, res) => {
+    const { dashboard_id, colSize } = req.body;
+
+    if (!dashboard_id || typeof colSize !== 'number') {
+        return res.status(400).json({ errorsExistFlag: false,  message: 'Debe enviar dashboard_id y colSize válidos' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Validar rango permitido, ej: entre 1 y 12
+        const size = Math.min(Math.max(colSize, 1), 12);
+
+        await client.query(
+            `UPDATE mes_dashboards SET col_size = $1 WHERE dashboard_id = $2`,
+            [size, dashboard_id]
+        );
+
+        await client.query('COMMIT');
+
+        res.status(200).json({ errorsExistFlag: false, message: 'Tamaño actualizado correctamente' });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al actualizar tamaño:', error);
+        res.status(500).json({ errorsExistFlag: true, message: 'Error al actualizar tamaño del dashboard' });
+    } finally {
+        client.release();
+    }
+});
+
 
 //actualiza las posiciones de todos los tableros
 router.put('/dashboards/order', async (req, res) => {
