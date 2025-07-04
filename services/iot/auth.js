@@ -31,17 +31,33 @@ router.post('/login', async (req, res) => {
         }
         // 4. Obtener organizaciones del usuario
         const company = await pool.query(`
-            SELECT C.company_id AS "CompanyId", C.name AS "Name",
-            json_agg( json_build_object(
-                'OrganizationId', O.organization_id,
-                'Code', O.code,
-                'Name', O.name, 'Location', O.location, 'WorkMethod', O.work_method, 'BUId', O.bu_id, 'Coordinates', O.coordinates)
-            ) AS "Organizations" FROM MES_USERS U
-                INNER JOIN MES_USERS_ORG UO ON U.user_id = UO.user_id
-                INNER JOIN MES_ORGANIZATIONS O ON UO.organization_id = O.organization_id
-                INNER JOIN MES_COMPANIES C ON O.company_id = C.company_id
-                WHERE U.user_id = $1
-                GROUP BY C.company_id, C.name;`, [user.user_id]);
+            SELECT
+                C.company_id AS "CompanyId",
+                C.name AS "Name",
+                json_agg(DISTINCT jsonb_build_object(
+            'OrganizationId', O.organization_id, 
+            'Code', O.code,
+            'Name', O.name, 
+            'Location', O.location, 
+            'WorkMethod', O.work_method, 
+            'BUId', O.bu_id, 
+            'Coordinates', O.coordinates)
+        ) AS "Organizations",
+                json_agg(DISTINCT jsonb_build_object(
+            'Name', S.name,
+            'Value', S.value,
+            'Type', S.type, 
+            'EnabledFlag', S.enabled_flag,
+            'UpdatedBy', S.updated_by, 
+            'UpdatedDate', S.updated_date)
+        ) AS "Settings"
+            FROM MES_USERS U
+                     INNER JOIN MES_USERS_ORG UO ON U.user_id = UO.user_id
+                     INNER JOIN MES_ORGANIZATIONS O ON UO.organization_id = O.organization_id
+                     INNER JOIN MES_COMPANIES C ON O.company_id = C.company_id
+                     INNER JOIN MES_SETTINGS S ON C.company_id = S.company_id
+            WHERE U.user_id = $1
+            GROUP BY C.company_id, C.name`, [user.user_id]);
 
         // 5. Construir respuesta
         return res.json({
