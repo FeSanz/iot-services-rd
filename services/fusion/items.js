@@ -32,7 +32,7 @@ router.get('/items/:company/:type', async (req, res) => {
     const baseQuery = `SELECT item_id AS "ItemId", company_id AS "Company", number AS "Number", description AS "Description",
                                      uom AS "UoM", type AS "Type", lot_control AS "LotControl"
                               FROM MES_ITEMS
-                              WHERE company_id= $1 ORDER BY number ASC`;
+                              WHERE company_id= $1`;
     let sqlQuery;
     let queryParams;
 

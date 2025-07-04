@@ -17,6 +17,11 @@ CREATE TRIGGER updated_date_settings
     BEFORE UPDATE ON mes_settings
     FOR EACH ROW
     EXECUTE FUNCTION updated_date();
+--Dasboards
+CREATE TRIGGER updated_date_dashboard
+    BEFORE UPDATE ON mes_dashboards
+    FOR EACH ROW
+    EXECUTE FUNCTION updated_date();
 
 --Verificar que el trigger se creó correctamente
 SELECT trigger_name, event_manipulation, action_statement

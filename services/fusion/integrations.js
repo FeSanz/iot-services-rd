@@ -17,52 +17,49 @@ router.get('/settings/:company', async (req, res) => {
     res.status(statusCode).json(result);
 });
 
-//Insertar multiples datos
-router.post('/settings', async (req, res) => {
+//Insertar multiples datos de configuracion
+router.post('/settingsFusion', async (req, res) => {
     try {
-        const payload = req.body.items || [];
+        const { CompanyId, User, items } = req.body;
 
-        if (payload.length === 0) {
+        if (!CompanyId || !User || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'No se proporcionaron datos',
+                message: 'Faltan datos requeridos: Company, User, o Data está vacío',
                 totalResults: 0
             });
         }
 
-        // Obtener existentes
-        const stgRecieved = payload.map((element) => element.value);
-        const stgExistResult = await pool.query('SELECT S.value FROM MES_SETTING S WHERE  S.company_id = CompanyId AND S.name = Name AND S.value = ANY($1)', [stgRecieved]);
-        const stgExisting = new Set(stgExistResult.rows.map(row => row.value));
-
-        // Filtrar nuevos
-        const stgNews = payload.filter(element => !stgExisting.has(element.Value));
-
-        if (stgNews.length === 0) {
+        // Verificar si el parametro existe, ya no continuar
+        const stgExistResult = await pool.query(`SELECT S.value FROM MES_SETTINGS S 
+                                                    WHERE S.company_id = $1 AND S.name = $2`,
+                                                [CompanyId, 'FUSION_URL']);
+        if (stgExistResult.rows.length >= 1) {
             return res.status(200).json({
                 errorsExistFlag: false,
-                message: 'Todos los datos de integración ya existen',
+                message: 'Credenciales ya fueron registradas',
                 totalResults: 0
             });
         }
 
         // Preparar inserción
         const values = [];
-        const placeholders = stgNews.map((py, index) => {
-            const base = index * 7;
-            values.push(py.CompanyId, py.Name, py.Value, py.Description, py.Type, py.Status, py.EnableFlag, py.CreatedBy, py.UpdateBy);
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+        const placeholders = items.map((py, index) => {
+            const base = index * 9;
+            values.push(CompanyId, py.Name, py.Value, py.Description, 'FUSION', 'Verificado', 'Y', User, User);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, 
+                     $${base + 8}, $${base + 9})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_ORGANIZATIONS (company_id, code, name, location, work_method, bu_id, coordinates)
+            INSERT INTO MES_SETTINGS (company_id, name, value, description, type, status, enabled_flag, created_by, updated_by)
             VALUES ${placeholders.join(', ')}
         `, values);
 
         res.status(201).json({
             errorsExistFlag: false,
-            message: `Registrado exitosamente [${orgNews.length}]`,
-            totalResults: orgNews.length,
+            message: `Registrado exitosamente [${items.length}]`,
+            totalResults: items.length
         });
 
     } catch (error) {
@@ -75,45 +72,80 @@ router.post('/settings', async (req, res) => {
     }
 });
 
-// Actualizar registro por ID
-router.put('/organizations/:id', async (req, res) => {
+// Actualizar credenciales de fusion
+router.put('/settingsFusion', async (req, res) => {
     try {
-        const { id } = req.params;
-        const { Code, Name, Location, WorkMethod, BUId } = req.body;
+        const { CompanyId, User, items } = req.body;
+        const payload = items || [];
 
-        // Validación básica
-        if (!Code || !Name) {
+        // Validaciones
+        if (!CompanyId || !User) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'Faltan campos requeridos',
-                totalResults: 0,
-                items: null
+                message: 'No se proporcionaron todos los datos necesarios',
+                totalResults: 0
             });
         }
 
-        // Verificar si la organización existe
-        const checkResult = await pool.query('SELECT organization_id FROM MES_ORGANIZATIONS WHERE organization_id = $1', [id]);
+        if (payload.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron datos',
+                totalResults: 0
+            });
+        }
 
-        if (checkResult.rows.length === 0) {
+
+        const fusion = await pool.query(`SELECT S.name, S.value FROM MES_SETTINGS S
+                                         WHERE S.company_id = $1 AND S.name IN ('FUSION_CREDENTIALS', 'FUSION_URL')`, [CompanyId]);
+
+        const credentialsDB = fusion.rows.find(row => row.name === 'FUSION_CREDENTIALS')?.value;
+        const hostDB = fusion.rows.find(row => row.name === 'FUSION_URL')?.value;
+
+        if (!credentialsDB || !hostDB) {
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Registro no encontrado',
+                message: 'Registros no encontrados para actualización',
                 totalResults: 0,
                 items: null
             });
         }
 
-        const result = await pool.query(`UPDATE MES_ORGANIZATIONS 
-                                        SET code = $1, name = $2, location = $3, work_method = $4, bu_id = $5
-                                        WHERE organization_id = $6
-                                        RETURNING organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"`,
-            [Code, Name, Location, WorkMethod, BUId, id]);
+        const credentialsPY = payload.find(py => py.Name === 'FUSION_CREDENTIALS');
+        const hostPY = payload.find(py => py.Name === 'FUSION_URL');
+
+        if (!credentialsPY || !hostPY) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'Datos incompletos',
+                totalResults: 0
+            });
+        }
+
+        const result = await pool.query(`
+            UPDATE MES_SETTINGS
+            SET value = CASE
+                            WHEN name = 'FUSION_CREDENTIALS' THEN $1
+                            WHEN name = 'FUSION_URL' THEN $2
+                            ELSE value
+                END,
+                status = 'Actualizado',
+                updated_by = $3
+            WHERE company_id = $4 AND name IN ('FUSION_CREDENTIALS', 'FUSION_URL')
+        `, [credentialsPY.Value, hostPY.Value, User, CompanyId]);
+
+        // Verificar que se actualizaron exactamente 2 registros
+        if (result.rowCount !== 2) {
+            return res.status(404).json({
+                errorsExistFlag: true, // Corregido: debe ser true
+                message: 'No se encontraron todos los registros para actualizar',
+                totalResults: 0
+            });
+        }
 
         res.json({
             errorsExistFlag: false,
             message: 'Actualizado exitosamente',
-            totalResults: 1,
-            items: result.rows[0]
         });
 
     } catch (error) {
