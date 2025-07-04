@@ -186,8 +186,8 @@ router.post('/sensorData', async (req, res) => {
         const sensorId = sensorResult.rows[0].sensor_id;
 
         const result = await pool.query(
-            `INSERT INTO mes_sensor_data (sensor_id, value, comment, date_time)
-             VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            `INSERT INTO mes_sensor_data (sensor_id, value, comment)
+             VALUES ($1, $2, $3)
              RETURNING *`,
             [sensorId, value, comment || '']
         );
