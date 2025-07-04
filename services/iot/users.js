@@ -4,41 +4,44 @@ const pool = require('../../database/pool');
 
 //obtener usuarios por organización
 router.get('/users', async (req, res) => {
-    const { organizations } = req.query;
+    const { organizations, company_id } = req.query;
 
     try {
-        if (!organizations) {
-            return res.status(400).json({
-                errorsExistFlag: true,
-                message: 'Parámetro organizations requerido'
-            });
-        }
+        let orgArray = [];
 
-        // Parsear el parámetro de string a array de enteros
-        const orgArray = organizations
-            .split(',')
-            .map(id => parseInt(id.trim()))
-            .filter(id => !isNaN(id));
+        if (company_id) {
+            // Buscar todas las organizaciones que pertenecen a la compañía
+            const orgsResult = await pool.query(
+                `SELECT organization_id FROM mes_organizations WHERE company_id = $1`,
+                [company_id]
+            );
+            orgArray = orgsResult.rows.map(row => row.organization_id);
+        } else if (organizations) {
+            orgArray = organizations
+                .split(',')
+                .map(id => parseInt(id.trim()))
+                .filter(id => !isNaN(id));
+        }
 
         if (orgArray.length === 0) {
             return res.status(400).json({
                 errorsExistFlag: true,
-                message: 'El parámetro organizations no contiene IDs válidos'
+                message: 'Se requiere al menos un organization_id válido o un company_id con organizaciones.'
             });
         }
 
         const query = `
-      SELECT u.user_id, u.name, u.email, u.role, u.type, u.level, u.rfid, u.password, u.enabled_flag,
-             json_agg(DISTINCT jsonb_build_object('org_id', o.organization_id, 'org_name', o.name, 'org_code', o.code)) AS organizations
-      FROM mes_users u
-      JOIN mes_users_org uo ON u.user_id = uo.user_id
-      JOIN mes_organizations o ON o.organization_id = uo.organization_id
-      WHERE o.organization_id = ANY($1)
-      GROUP BY u.user_id;
-    `;
+            SELECT 
+                u.user_id, u.name, u.email, u.role, u.type, u.level, u.rfid, u.password, u.enabled_flag,
+                json_agg(DISTINCT jsonb_build_object('org_id', o.organization_id, 'org_name', o.name, 'org_code', o.code)) AS organizations
+            FROM mes_users u
+            JOIN mes_users_org uo ON u.user_id = uo.user_id
+            JOIN mes_organizations o ON o.organization_id = uo.organization_id
+            WHERE o.organization_id = ANY($1)
+            GROUP BY u.user_id;
+        `;
 
-        const values = [orgArray];
-        const result = await pool.query(query, values);
+        const result = await pool.query(query, [orgArray]);
 
         res.json({
             errorsExistFlag: false,
@@ -56,23 +59,22 @@ router.get('/users', async (req, res) => {
 
 //Nuevo usuario
 router.post('/users', async (req, res) => {
-    const { role, name, type, password, email, level, rfid, enabled_flag, organizations } = req.body;
+    const { role, name, type, password, email, enabled_flag, organizations } = req.body;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         // 1. Insertar usuario
         const insertUserResult = await client.query(
-            `INSERT INTO mes_users (role, name, type, password, email, level, rfid, enabled_flag)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO mes_users (role, name, type, password, email, enabled_flag)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING user_id`,
-            [role, name, type, password, email, level, rfid, enabled_flag || 'Y']
+            [role, name, type, password, email, enabled_flag || 'Y']
         );
-        const user_id = insertUserResult.rows[0].user_id;        
+        const user_id = insertUserResult.rows[0].user_id;
         // 2. Insertar relaciones user-org
         for (const org of organizations) {
             const orgId = parseInt(org.org_id);
             if (!isNaN(orgId)) {
-
                 await client.query(
                     `INSERT INTO mes_users_org (user_id, organization_id) VALUES ($1, $2)`,
                     [user_id, orgId]
@@ -98,7 +100,7 @@ router.post('/users', async (req, res) => {
 
 router.put('/users/:user_id', async (req, res) => {
     const { user_id } = req.params;
-    const { role, name, type, password, email, level, rfid, enabled_flag, organizations } = req.body;
+    const { role, name, type, password, email, enabled_flag, organizations } = req.body;
 
     const client = await pool.connect();
 
@@ -108,10 +110,11 @@ router.put('/users/:user_id', async (req, res) => {
         // 1. Actualizar usuario
         await client.query(
             `UPDATE mes_users 
-       SET role = $1, name = $2, type = $3, password = $4, email = $5, level = $6, rfid = $7, enabled_flag = $8,
-       WHERE user_id = $10`,
-            [role, name, type, password, email, level, rfid, enabled_flag || 'Y', user_id]
+       SET role = $1, name = $2, type = $3, password = $4, email = $5, enabled_flag = $6
+       WHERE user_id = $7`,
+            [role, name, type, password, email, enabled_flag || 'Y', user_id]
         );
+
 
         // 2. Eliminar relaciones antiguas
         await client.query(
