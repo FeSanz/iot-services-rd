@@ -94,7 +94,7 @@ router.get('/sensorsData', async (req, res) => {
             });
         }
         res.status(200).json({
-            existError: false,
+            errorsExistFlag: false,
             message: "OK",
             totalSensors: sensorsData.length,
             items: sensorsData
@@ -134,8 +134,8 @@ router.post('/sensorsData', async (req, res) => {
 
             // Insertar el dato del sensor y retornar el valor insertado
             const insertResult = await pool.query(`
-                INSERT INTO mes_sensor_data (sensor_id, value, date_time)
-                VALUES ($1, $2, NOW())
+                INSERT INTO mes_sensor_data (sensor_id, value)
+                VALUES ($1, $2)
                 RETURNING value, date_time
             `, [sensor.sensor_id, value]);
 
@@ -159,8 +159,10 @@ router.post('/sensorsData', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error al guardar datos:', error);
-        res.status(500).json({ error: 'Error al guardar en base de datos' });
+        console.log('Error al guardar datos:', error);
+        res.status(500).json({
+            errorsExistFlag: true, message: 'Error al guardar en base de datos'
+        });
     }
 });
 
@@ -180,7 +182,9 @@ router.post('/sensorData', async (req, res) => {
         );
 
         if (sensorResult.rows.length === 0) {
-            return res.status(404).json({ error: 'Sensor no encontrado para ese token y variable' });
+            return res.status(404).json({
+                message: 'Sensor no encontrado para ese token y variable'
+            });
         }
 
         const sensorId = sensorResult.rows[0].sensor_id;
