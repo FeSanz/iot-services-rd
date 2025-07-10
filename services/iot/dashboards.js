@@ -31,14 +31,14 @@ router.get('/dashboards/group/:groupId', async (req, res) => {
 
 //Agregar nuevo widget
 router.post('/dashboards', async (req, res) => {
-    const { dashboard_group_id, name, color, parameters, created_by, updated_by, index } = req.body;
+    const { dashboard_group_id, name, color, parameters, created_by, updated_by, index, dateRange } = req.body;
     try {
         const result = await pool.query(
             `INSERT INTO mes_dashboards 
-            (dashboard_group_id, name, color, parameters, index, created_date, created_by, updated_date, updated_by) 
-            VALUES ($1, $2, $3, $4::jsonb, $5, CURRENT_TIMESTAMP, $6, CURRENT_TIMESTAMP, $7)
+            (dashboard_group_id, name, color, parameters, index, date_range, created_date, created_by, updated_date, updated_by) 
+            VALUES ($1, $2, $3, $4::jsonb, $5, $6, CURRENT_TIMESTAMP, $7, CURRENT_TIMESTAMP, $8)
             RETURNING *`,
-            [dashboard_group_id, name, color, parameters, index ?? 0, created_by, updated_by]
+            [dashboard_group_id, name, color, parameters, index ?? 0, dateRange, created_by, updated_by]
         );
 
         res.status(201).json({
@@ -82,7 +82,7 @@ router.put('/dashboards/size', async (req, res) => {
     const { dashboard_id, colSize } = req.body;
 
     if (!dashboard_id || typeof colSize !== 'number') {
-        return res.status(400).json({ errorsExistFlag: false,  message: 'Debe enviar dashboard_id y colSize válidos' });
+        return res.status(400).json({ errorsExistFlag: false, message: 'Debe enviar dashboard_id y colSize válidos' });
     }
 
     const client = await pool.connect();
@@ -114,6 +114,7 @@ router.put('/dashboards/size', async (req, res) => {
 router.put('/dashboards/order', async (req, res) => {
     const { items } = req.body;
 
+
     if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: 'Debe enviar un arreglo con los índices a actualizar' });
     }
@@ -141,6 +142,44 @@ router.put('/dashboards/order', async (req, res) => {
         client.release();
     }
 });
+//update dateRange
+router.put('/dashboards/dateRange', async (req, res) => {
+    const { dashboard_id, dateRange } = req.body;
+
+    if (!dateRange) {
+        return res.status(400).json({
+            errorsExistFlag: true, message: 'Debe proporcionar un valor para dateRange',
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            `UPDATE mes_dashboards
+       SET date_range = $1,
+           updated_date = CURRENT_TIMESTAMP
+       WHERE dashboard_id = $2
+       RETURNING *`,
+            [dateRange, dashboard_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true, message: 'Dashboard no encontrado',
+            });
+        }
+
+        res.json({
+            errorsExistFlag: false, message: 'OK',
+            item: result.rows[0],
+        });
+    } catch (error) {
+        console.error('Error al actualizar dateRange:', error);
+        res.status(500).json({
+            errorsExistFlag: true, message: 'Error al actualizar el rango de fechas',
+        });
+    }
+});
+
 //actualizar dashboards
 router.put('/dashboards/:id', async (req, res) => {
     const dashboardId = req.params.id;

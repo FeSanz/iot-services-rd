@@ -23,7 +23,6 @@ router.get('/sensorData/:sensorID', async (req, res) => {
             value: row.value,
             time: row.date_time
         }));
-console.log(data);
 
         res.status(200).json({
             existError: false,
@@ -211,8 +210,6 @@ router.post('/sensorsData', async (req, res) => {
         client.release();
     }
 });
-
-
 
 //agregar nuevo dato de sensor
 router.post('/sensorData', async (req, res) => {
