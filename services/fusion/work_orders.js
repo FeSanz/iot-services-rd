@@ -16,6 +16,7 @@ router.get('/workOrders/:organization', async (req, res) => {
                                wo.completed_quantity AS "CompletedQuantity",
                                wo.start_date AS "StartDate",
                                wo.end_date AS "CompletionDate",
+                               wo."status"AS "Status",
                                wo.type AS "Type",
                                -- Datos de MES_MACHINES
                                wo.machine_id AS "ResourceId",
