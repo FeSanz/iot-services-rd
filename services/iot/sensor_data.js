@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 
-const { notifyToUsers } = require('../websocket/websocket');
+const { notifyToUsers, notifySensorData} = require('../websocket/websocket');
 //obtener datos de sensores por dispositivo
 router.get('/sensorData/:sensorID', async (req, res) => {
     const { sensorID } = req.params;
@@ -186,7 +186,7 @@ router.post('/sensorsData', async (req, res) => {
             };
 
             // 4. Notificar a los usuarios suscritos a este sensor
-            notifyToUsers(sensor_id, { data: payload });
+            notifySensorData(sensor_id, { data: payload });
 
             results.push({ sensor_var, status: 'OK' });
         }
@@ -247,7 +247,7 @@ router.post('/sensorData', async (req, res) => {
             time: result.rows[0].date_time
         };
 
-        notifyToUsers(sensorId, {
+        notifySensorData(sensorId, {
             data: payload
         });
 

@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectByParamsFromDB} = require("../../models/sql-execute");
+const { notifyWorkOrderChanges } = require('../../services/websocket/websocket');
+const {notifyWorkOrders} = require("../websocket/websocket");
 
 // Obtener registros por organizacion y estado
 router.get('/workOrders/:organization', async (req, res) => {
@@ -80,12 +82,77 @@ router.post('/workOrders', async (req, res) => {
                      $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11})`;
         });
 
-        await pool.query(`
+        const insertResult = await pool.query(`
             INSERT INTO MES_WORK_ORDERS (organization_id, machine_id, work_order_number, work_definition_id, item_id,
                                          planned_quantity, completed_quantity, status, start_date, end_date, type)
             VALUES ${placeholders.join(', ')}
+                RETURNING work_order_id, organization_id, machine_id, work_order_number, item_id, planned_quantity, 
+            completed_quantity, status, start_date, end_date, work_definition_id, type
         `, values);
 
+        // Obtener datos completos de las órdenes insertadas con JOIN para máquinas e ítems
+        const workOrderIds = insertResult.rows.map(row => row.work_order_id);
+
+        const completeOrdersResult = await pool.query(`
+            SELECT 
+                wo.work_order_id,
+                wo.organization_id,
+                wo.machine_id,
+                wo.work_order_number,
+                wo.item_id,
+                wo.planned_quantity,
+                wo.completed_quantity,
+                wo.status,
+                wo.start_date,
+                wo.end_date,
+                -- Datos de la máquina
+                m.code as machine_code,
+                m.name as machine_name,
+                m.work_center_id,
+                m.work_center,
+                -- Datos del ítem/producto
+                i.number as item_number,
+                i.description as item_description,
+                i.uom as item_uom
+            FROM MES_WORK_ORDERS wo
+            LEFT JOIN MES_MACHINES m ON wo.machine_id = m.machine_id
+            LEFT JOIN MES_ITEMS i ON wo.item_id = i.item_id
+            WHERE wo.work_order_id = ANY($1)
+            ORDER BY wo.work_order_id
+        `, [workOrderIds]);
+
+        // Agrupar por organización y notificar
+        const organizationIds = [...new Set(insertResult.rows.map(order => order.organization_id))];
+
+        organizationIds.forEach(orgId => {
+            const orgOrders = completeOrdersResult.rows.filter(row => row.organization_id === orgId);
+
+            notifyWorkOrders(orgId, {
+                totalResults: orgOrders.length,
+                items: orgOrders.map(row => ({
+                    OrganizationId: row.organization_id,
+                    // Datos de la orden de trabajo
+                    WorkOrderId: row.work_order_id,
+                    WorkOrderNumber: row.work_order_number,
+                    PlannedQuantity: row.planned_quantity,
+                    CompletedQuantity: row.completed_quantity,
+                    Status: row.status,
+                    StartDate: row.start_date,
+                    EndDate: row.end_date,
+                    // Datos de la máquina
+                    MachineId: row.machine_id,
+                    Code: row.machine_code,
+                    Name: row.machine_name,
+                    WorkCenterId: row.work_center_id,
+                    WorkCenter: row.work_center,
+                    // Datos del ítem/producto
+                    ItemId: row.item_id,
+                    Number: row.item_number,
+                    Description: row.item_description,
+                    UoM: row.item_uom
+                }))
+            });
+        });
 
         res.status(201).json({
             errorsExistFlag: false,
@@ -198,6 +265,7 @@ router.post('/workOrdersMachines', async (req, res) => {
     }
 });
 
+//Obtener articulos de fabricacion por orden
 router.post('/WorkOrdersItems', async (req, res) => {
     try {
         const { CompanyId, items } = req.body;
