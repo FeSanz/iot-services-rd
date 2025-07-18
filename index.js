@@ -15,7 +15,7 @@ app.options('*', cors());
 app.use(express.json());*/
 
 app.use(cors({
-    origin: ['http://localhost:8100', 'http://localhost:8101'],
+    origin: ['http://localhost:8100', 'http://localhost:8101', 'https://mes-r495.onrender.com'],
     credentials: true
 }));
 
