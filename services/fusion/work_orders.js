@@ -10,11 +10,11 @@ router.get('/workOrders/:organization', async (req, res) => {
     const { organization } = req.params;
     const sqlQuery  = `SELECT
                                wo.work_order_id AS "WorkOrderId",
-                               wo.machine_id AS "MachineId",
                                wo.work_order_number AS "WorkOrderNumber",
                                wo.work_definition_id AS "WorkDefinitionId",
                                wo.item_id AS "ItemId",
                                wo.planned_quantity AS "PlannedQuantity",
+                               wo.dispatched_quantity AS "DispatchedQuantity",
                                wo.completed_quantity AS "CompletedQuantity",
                                wo.start_date AS "StartDate",
                                wo.end_date AS "CompletionDate",
@@ -75,19 +75,21 @@ router.post('/workOrders', async (req, res) => {
 
         const values = [];
         const placeholders = ordersNews.map((py, index) => {
-            const base = index * 11;
+            const base = index * 12;
             values.push(py.OrganizationId, py.MachineId, py.WorkOrderNumber, py.WorkDefinitionId, py.ItemId,
-                        py.PlannedQuantity, py.CompletedQuantity, py.Status, py.StartDate, py.CompletionDate, py.Type);
+                        py.PlannedQuantity, py.DispatchedQuantity, py.CompletedQuantity, py.Status, py.StartDate,
+                        py.CompletionDate, py.Type);
             return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, 
-                     $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11})`;
+                     $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12})`;
         });
 
         const insertResult = await pool.query(`
             INSERT INTO MES_WORK_ORDERS (organization_id, machine_id, work_order_number, work_definition_id, item_id,
-                                         planned_quantity, completed_quantity, status, start_date, end_date, type)
+                                         planned_quantity, dispatched_quantity, completed_quantity, status, start_date,
+                                         end_date, type)
             VALUES ${placeholders.join(', ')}
                 RETURNING work_order_id, organization_id, machine_id, work_order_number, item_id, planned_quantity, 
-            completed_quantity, status, start_date, end_date, work_definition_id, type
+            dispatched_quantity, completed_quantity, status, start_date, end_date, work_definition_id, type
         `, values);
 
         // Obtener datos completos de las órdenes insertadas con JOIN para máquinas e ítems
@@ -101,6 +103,7 @@ router.post('/workOrders', async (req, res) => {
                 wo.work_order_number,
                 wo.item_id,
                 wo.planned_quantity,
+                wo.dispatched_quantity,
                 wo.completed_quantity,
                 wo.status,
                 wo.start_date,
@@ -135,19 +138,19 @@ router.post('/workOrders', async (req, res) => {
                     WorkOrderId: row.work_order_id,
                     WorkOrderNumber: row.work_order_number,
                     PlannedQuantity: row.planned_quantity,
+                    DispatchedQuantity: row.dispatched_quantity,
                     CompletedQuantity: row.completed_quantity,
                     Status: row.status,
                     StartDate: row.start_date,
-                    EndDate: row.end_date,
+                    CompletionDate: row.end_date,
                     // Datos de la máquina
-                    MachineId: row.machine_id,
-                    Code: row.machine_code,
-                    Name: row.machine_name,
+                    ResourceId: row.machine_id,
+                    ResourceCode: row.machine_code,
                     WorkCenterId: row.work_center_id,
                     WorkCenter: row.work_center,
                     // Datos del ítem/producto
                     ItemId: row.item_id,
-                    Number: row.item_number,
+                    ItemNumber: row.item_number,
                     Description: row.item_description,
                     UoM: row.item_uom
                 }))
