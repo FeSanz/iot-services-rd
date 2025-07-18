@@ -26,7 +26,7 @@ function initWebSocket(server) {
             }
         });
         ws.on('close', () => {
-            console.log('Cliente WebSocket desconectado');
+            //console.log('Cliente WebSocket desconectado');
         });
 
         ws.on('error', (error) => {
