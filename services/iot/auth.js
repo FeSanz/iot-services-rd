@@ -6,7 +6,7 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-        return res.status(401).json({  errorsExistFlag: true, message: 'Completa todos los campos' });
+        return res.status(401).json({ errorsExistFlag: true, message: 'Completa todos los campos' });
     }
     try {
         // 1. Buscar al usuario
@@ -78,7 +78,7 @@ router.post('/login', async (req, res) => {
         });
     } catch (error) {
         console.error('Error en login:', error);
-        return res.status(500).json({ message: 'Error en el servidor' });
+        return res.status(500).json({ errorsExistFlag: true, message: 'Error en el servidor' });
     }
 });
 
