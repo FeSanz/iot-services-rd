@@ -123,7 +123,7 @@ router.get('/machinesAndSensorsByCompany/:companyId', async (req, res) => {
       GROUP BY 
           m.machine_id, m.name, m.code, m.token, m.organization_id
       ORDER BY 
-          m.name;
+          m.machine_id;
       `,
             [companyId]
         );
@@ -203,7 +203,7 @@ router.get('/machinesAndSensorsByOrganizations', async (req, res) => {
             GROUP BY 
                 m.machine_id, m.name, m.code, m.token, m.organization_id
             ORDER BY 
-                m.name;
+                m.machine_id;
             `,
             [organizationIds]
         );
@@ -222,8 +222,6 @@ router.get('/machinesAndSensorsByOrganizations', async (req, res) => {
         });
     }
 });
-
-
 //obtener una máquina
 router.get('/machine/:machId', async (req, res) => {
     const { machId } = req.params;
@@ -244,7 +242,6 @@ router.get('/machine/:machId', async (req, res) => {
         res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
-
 //agregar nueva máquina
 router.post('/machines', async (req, res) => {
     const { organization_id, code, name, token, work_center_id, work_center, machine_class } = req.body;
@@ -268,7 +265,6 @@ router.post('/machines', async (req, res) => {
         });
     }
 });
-
 //actualizar máquina
 router.put('/machines/:id', async (req, res) => {
     const machineId = req.params.id;
@@ -327,12 +323,9 @@ router.put('/machines/:id', async (req, res) => {
         client.release();
     }
 });
-
-
 //Eliminar máquina
 router.delete('/machines/:id', async (req, res) => {
     const sensorId = req.params.id;
-
     try {
         const result = await pool.query(
             'DELETE FROM MES_MACHINES WHERE machine_id = $1 RETURNING *',
