@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 
-const { notifyToUsers, notifySensorData} = require('../websocket/websocket');
+const { notifySensorData } = require('../websocket/websocket');
 //obtener datos de sensores por dispositivo
 router.get('/sensorData/:sensorID', async (req, res) => {
     const { sensorID } = req.params;
@@ -40,6 +40,60 @@ router.get('/sensorData/:sensorID', async (req, res) => {
     }
 });
 
+router.get('/sensorsLatest', async (req, res) => {
+    const idsParam = req.query.sensorIDs;
+
+    if (!idsParam) {
+        return res.status(400).json({
+            existError: true,
+            message: 'Debes proporcionar sensorIDs como query string. Ej: /sensorData?sensorIDs=1,2,3',
+        });
+    }
+
+    const sensorIDs = idsParam.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+
+    if (sensorIDs.length === 0) {
+        return res.status(400).json({
+            existError: true,
+            message: 'sensorIDs inválidos. Asegúrate de usar números separados por comas.',
+        });
+    }
+
+    try {
+        const query = `
+      SELECT DISTINCT ON (sd.sensor_id)
+        sd.sensor_id,
+        s.name AS sensor_name,
+        sd.value,
+        sd.date_time
+      FROM mes_sensor_data sd
+      JOIN mes_sensors s ON sd.sensor_id = s.sensor_id
+      WHERE sd.sensor_id = ANY($1::int[])
+        AND sd.date_time IS NOT NULL
+      ORDER BY sd.sensor_id, sd.date_time DESC
+    `;
+
+        const result = await pool.query(query, [sensorIDs]);
+
+        const items = result.rows.map(row => ({
+            sensor_id: row.sensor_id,
+            sensor_name: row.sensor_name,
+            value: row.value,
+            date_time: row.date_time
+        }));
+
+        res.status(200).json({
+            existError: false,
+            message: 'OK',
+            items,
+            totalResults: items.length
+        });
+
+    } catch (error) {
+        console.error('Error al obtener datos de sensores:', error);
+        res.status(500).json({ error: 'Error al consultar la base de datos' });
+    }
+});
 
 router.get('/sensorsData', async (req, res) => {
     const { sensors, start, end, limit } = req.query;
