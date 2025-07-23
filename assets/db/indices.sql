@@ -6,3 +6,8 @@ SELECT setval(
 
 --Consultar la secuencia actual de inidices de la tabla
 SELECT last_value FROM mes_sensor_data_sensor_data_id_seq;
+
+/*** Modificaciones ***/
+ALTER TABLE MES_DASHBOARDS
+ADD COLUMN BORDER_FLAG CHAR(1) DEFAULT 'Y';
+/**********************/
