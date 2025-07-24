@@ -19,10 +19,11 @@ router.get('/resourceMachines', async (req, res) => {
 
 // Obtener registros por organizacion y centro de trabajo
 router.get('/resourceMachines/:organization/:wc', async (req, res) => {
-    const { organization, wc } = req.params;
+    
+    const { organization, wc } = req.params;    
 
     // Validaciones
-    if (!organization && !wc) {
+    if (!organization && !wc) {    
         return res.status(400).json({
             errorsExistFlag: true,
             message: 'Datos de organización y centro de trabajo son requeridos',
@@ -44,7 +45,7 @@ router.get('/resourceMachines/:organization/:wc', async (req, res) => {
 //Insertar multiples datos
 router.post('/resourceMachines', async (req, res) => {
     try {
-        const payload = req.body.items || [];
+        const payload = req.body.items || [];        
 
         if (payload.length === 0) {
             return res.status(400).json({
@@ -142,6 +143,32 @@ router.delete('/resourceMachines/:id', async (req, res) => {
             totalResults: 0
         });
     }
+});
+
+
+// Obtener registros por organizacion
+router.get('/orgResourceMachines/:organization', async (req, res) => {
+    
+    const { organization} = req.params;    
+
+    // Validaciones
+    if (!organization) {    
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Datos de organización son requeridos',
+            totalResults: 0
+        });
+    }
+
+    const sqlQuery  = `SELECT machine_id AS "MachineId", organization_id AS "OrganizationId", code AS "Code", 
+                                     name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter", 
+                                     class AS "Class", token "Token"  
+                              FROM MES_MACHINES 
+                              WHERE organization_id = $1 ORDER BY code ASC`;
+
+    const result = await selectByParamsFromDB(sqlQuery, [organization]);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
 });
 
 //Exportar el router
