@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectByParamsFromDB} = require("../../models/sql-execute");
-const { notifyWorkOrderChanges } = require('../../services/websocket/websocket');
 const {notifyWorkOrders} = require("../websocket/websocket");
 
 // Obtener registros por organizacion y estado

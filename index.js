@@ -22,19 +22,25 @@ app.use(cors({
 app.use(cors());
 app.use(express.json());
 
+app.use('/api', require('./services/iot/auth'));
+app.use('/api', require('./services/iot/users'));
+
 app.use('/api', require('./services/iot/machines'));
 app.use('/api', require('./services/iot/sensor_data'));
 app.use('/api', require('./services/iot/sensors'));
-app.use('/api', require('./services/iot/users'));
+
 app.use('/api', require('./services/iot/dashboards'));
 app.use('/api', require('./services/iot/dashboardGroups'));
-app.use('/api', require('./services/iot/auth'));
+
 app.use('/api', require('./services/fusion/integrations'));
 app.use('/api', require('./services/fusion/organizations'));
 app.use('/api', require('./services/fusion/resources'));
 app.use('/api', require('./services/fusion/items'));
 app.use('/api', require('./services/fusion/shifts'));
 app.use('/api', require('./services/fusion/work_orders'));
+
+app.use('/api', require('./services/fusion/work_execution'));
+
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
