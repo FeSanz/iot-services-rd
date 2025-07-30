@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
-const {selectByParamsFromDB} = require("../../models/sql-execute");
-const {notifyWorkOrders} = require("../websocket/websocket");
+const {notifyWorkOrdersAdvance} = require("../websocket/websocket");
 
 //Actualizar Completado OT
 router.put('/woCompleted/:organizationId', async (req, res) => {
@@ -66,7 +65,7 @@ router.put('/woCompleted/:organizationId', async (req, res) => {
                 [workOrder.work_order_id, ExecutionDate, Number, readyCompleted, Scrap || 0, Reject || 0, Tare || 0, Container || 0]);
 
             // Determinar el nuevo estado
-            const newStatus = completed_total === parseFloat(workOrder.planned_quantity || 0) ? "COMPLETED" : "RELEASED";
+            const newStatus = completed_total === parseFloat(workOrder.planned_quantity || 0) ? "COMPLETED" : "IN_PROCESS";
 
             // Actualizar la orden de trabajo
             const result = await pool.query(`
@@ -76,13 +75,15 @@ router.put('/woCompleted/:organizationId', async (req, res) => {
                 RETURNING work_order_id AS "WorkOrderId", completed_quantity AS "CompletedQuantity", status AS "Status"`,
                 [completed_total, newStatus, workOrder.work_order_id]);
 
-            notifyWorkOrders(organizationId, {
+            notifyWorkOrdersAdvance(organizationId, {
                 totalResults: 1,
                 items: {
                     WorkOrderId: result.rows[0].WorkOrderId,
                     CompletedQuantity: result.rows[0].CompletedQuantity,
                     Status: result.rows[0].Status,
-                    WorkOrderNumber: WorkOrderNumber
+                    ExecutionDate: ExecutionDate,
+                    Number: Number,
+                    Quantity: Ready,
                 }
             });
 

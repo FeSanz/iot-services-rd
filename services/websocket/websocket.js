@@ -14,13 +14,19 @@ function initWebSocket(server) {
                             ws.suscribedSensorId = data.sensor_id;
                         }
                         break;
-                    case 'workorders':
+                    case 'workorders-new':
                         if (data.organization_id) {
                             ws.subscribedOrganizationId = data.organization_id;
+                            ws.wsType = 'workorders-new';
+                        }
+                        break;
+                    case 'workorders-advance':
+                        if (data.organization_id) {
+                            ws.subscribedOrganizationId = data.organization_id;
+                            ws.wsType = 'workorders-advance';
                         }
                         break;
                 }
-
             } catch (e) {
                 console.error('Error 1', e);
             }
@@ -47,13 +53,25 @@ function notifySensorData(sensor_id, payload) {
     });
 }
 
-function notifyWorkOrders(organizationId, payload) {
+function notifyNewWorkOrders(organizationId, payload) {
     if (!wss) {
         console.warn('WebSocket server de OT no inicializado');
         return;
     }
     wss.clients.forEach((client) => {
-        if (client.readyState === 1 && client.subscribedOrganizationId == organizationId) {
+        if (client.readyState === 1 && client.subscribedOrganizationId == organizationId && client.wsType === 'workorders-new') {
+            client.send(JSON.stringify(payload));
+        }
+    });
+}
+
+function notifyWorkOrdersAdvance(organizationId, payload) {
+    if (!wss) {
+        console.warn('WebSocket server de OT no inicializado');
+        return;
+    }
+    wss.clients.forEach((client) => {
+        if (client.readyState === 1 && client.subscribedOrganizationId == organizationId && client.wsType === 'workorders-advance') {
             client.send(JSON.stringify(payload));
         }
     });
@@ -62,5 +80,6 @@ function notifyWorkOrders(organizationId, payload) {
 module.exports = {
     initWebSocket,
     notifySensorData,
-    notifyWorkOrders
+    notifyNewWorkOrders,
+    notifyWorkOrdersAdvance
 };

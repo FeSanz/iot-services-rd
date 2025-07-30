@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectByParamsFromDB} = require("../../models/sql-execute");
-const {notifyWorkOrders} = require("../websocket/websocket");
+const {notifyNewWorkOrders} = require("../websocket/websocket");
 
 // Obtener registros por organizacion y estado
 router.get('/workOrders/:organization', async (req, res) => {
@@ -129,7 +129,7 @@ router.post('/workOrders', async (req, res) => {
         organizationIds.forEach(orgId => {
             const orgOrders = completeOrdersResult.rows.filter(row => row.organization_id === orgId);
 
-            notifyWorkOrders(orgId, {
+            notifyNewWorkOrders(orgId, {
                 totalResults: orgOrders.length,
                 items: orgOrders.map(row => ({
                     OrganizationId: row.organization_id,
