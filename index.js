@@ -29,6 +29,9 @@ app.use('/api', require('./services/iot/machines'));
 app.use('/api', require('./services/iot/sensor_data'));
 app.use('/api', require('./services/iot/sensors'));
 
+app.use('/api', require('./services/iot/alerts'));
+app.use('/api', require('./services/iot/failtures'));
+
 app.use('/api', require('./services/iot/dashboards'));
 app.use('/api', require('./services/iot/dashboardGroups'));
 

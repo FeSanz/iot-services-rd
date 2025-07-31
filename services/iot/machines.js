@@ -22,6 +22,66 @@ router.get('/machines/:userId', async (req, res) => {
         res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
+//Obtener máquinas por organizaciones
+router.get('/machinesByOrganizations', async (req, res) => {
+    const { organizations } = req.query;
+
+    if (!organizations) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Debe enviar el parámetro "organizations" con IDs separados por coma'
+        });
+    }
+
+    // Convertir a array de números
+    const organizationIds = String(organizations)
+        .split(',')
+        .map(id => parseInt(id.trim()))
+        .filter(id => !isNaN(id));
+
+    if (organizationIds.length === 0) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'No se proporcionaron IDs válidos'
+        });
+    }
+
+    try {
+        const result = await pool.query(
+            `
+            SELECT
+                m.machine_id,
+                m.name AS machine_name,
+                m.code AS machine_code,
+                m.organization_id
+            FROM 
+                mes_machines m
+            JOIN 
+                mes_organizations o ON o.organization_id = m.organization_id
+            WHERE 
+                o.organization_id = ANY($1)
+                AND (m.token IS NULL OR m.token = '')
+            ORDER BY 
+                m.machine_id;
+            `,
+            [organizationIds]
+        );
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: result.rows.length,
+            items: result.rows
+        });
+    } catch (error) {
+        console.error('Error al obtener máquinas:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al consultar la base de datos'
+        });
+    }
+});
+
 //obtener las máquinas y sus sensores por usuario
 router.get('/machinesAndSensors/:userId', async (req, res) => {
     const { userId } = req.params;
