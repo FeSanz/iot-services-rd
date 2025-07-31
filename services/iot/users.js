@@ -226,4 +226,25 @@ router.delete('/users/:id', async (req, res) => {
     }
 });
 
+
+//Obtener cantidad de usuarios superAdmin
+router.get('/userNumber', async (req, res) => {
+    try {
+        const query = `SELECT COUNT(*) AS user_count FROM MES_USERS WHERE ROLE = 'SuperAdmin'`;
+
+        const result = await pool.query(query);        
+        
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: result.rowCount,
+            items: result.rows[0].user_count
+        });
+
+    } catch (error) {
+        console.error('Error al obtener usuarios:', error);
+        res.status(500).json({ error: 'Error al consultar número de usuarios'});
+    }
+});
+
 module.exports = router;
