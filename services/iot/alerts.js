@@ -63,21 +63,34 @@ router.get('/alertsByOrganizations', async (req, res) => {
 
     try {
         const query = `
-      SELECT 
-        a.alert_id,
-        f.area,
-        f.type,
-        f.name,
-        a.status,
-        a.start_date,
-        a.response_time,
-        a.repair_time
-      FROM mes_alerts a
-      JOIN mes_machines m ON a.machine_id = m.machine_id
-      JOIN mes_failures f ON a.failure_id = f.failure_id
-      WHERE m.organization_id = ANY($1)
-      ORDER BY a.start_date DESC;
-    `;
+            SELECT  
+                a.alert_id,
+                m.name AS machine_name,
+                m.organization_id,
+                f.area,
+                f.type,
+                f.name,
+                a.status,
+                a.start_date,
+                a.response_time,
+                a.repair_time
+            FROM 
+                mes_alerts a
+            JOIN 
+                mes_machines m ON a.machine_id = m.machine_id
+            JOIN 
+                mes_failures f ON a.failure_id = f.failure_id
+            WHERE 
+                m.organization_id = ANY($1)
+            ORDER BY 
+                CASE a.status
+                    WHEN 'attend' THEN 1
+                    WHEN 'in_progress' THEN 2
+                    WHEN 'finaliced' THEN 3
+                    ELSE 4
+                END,
+                a.start_date ASC;
+            `;
 
         const resultado = await pool.query(query, [orgIds]);
 
@@ -130,20 +143,55 @@ router.post('/alerts', async (req, res) => {
     }
 });
 
-//Update Alert
-router.put('/alerts/:alertId', async (req, res) => {
+//Attend Alert
+router.put('/alerts/:alertId/attend', async (req, res) => {
     const { alertId } = req.params;
-    const { status } = req.body;
 
     try {
         const result = await pool.query(
             `
       UPDATE mes_alerts
-      SET status = $1
-      WHERE alert_id = $2
+      SET status = 'in_progress', response_time = now()
+      WHERE alert_id = $1
       RETURNING *;
       `,
-            [status, alertId]
+            [alertId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'Alerta no encontrada'
+            });
+        }
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Estado de alerta actualizado correctamente',
+            totalResults: 1,
+            items: result.rows
+        });
+    } catch (error) {
+        console.error('Error al actualizar estado de alerta:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al actualizar el estado de la alerta'
+        });
+    }
+});
+//Repair Alert
+router.put('/alerts/:alertId/repair', async (req, res) => {
+    const { alertId } = req.params;
+
+    try {
+        const result = await pool.query(
+            `
+      UPDATE mes_alerts
+      SET status = 'finaliced', repair_time = now(), end_date = now()
+      WHERE alert_id = $1
+      RETURNING *;
+      `,
+            [alertId]
         );
 
         if (result.rowCount === 0) {
