@@ -14,6 +14,12 @@ function initWebSocket(server) {
                             ws.suscribedSensorId = data.sensor_id;
                         }
                         break;
+                    case 'alerts-new':                        
+                        if (data.organization_id) {
+                            ws.suscribedOrganization = data.organization_id;
+                            ws.wsType = 'alerts-new';
+                        }
+                        break;
                     case 'workorders-new':
                         if (data.organization_id) {
                             ws.subscribedOrganizationId = data.organization_id;
@@ -52,6 +58,20 @@ function notifySensorData(sensor_id, payload) {
         }
     });
 }
+function notifyNewAlert(organization_id, payload) {
+    if (!wss) {
+        console.warn('WebSocket server de alertas no inicializado');
+        return;
+    }
+    wss.clients.forEach((client) => {
+        console.log(client.readyState);
+        console.log(client.suscribedOrganization);
+        console.log(client.wsType);
+        if (client.readyState == 1 && client.suscribedOrganization == organization_id && client.wsType === 'alerts-new') {
+            client.send(JSON.stringify(payload));
+        }
+    });
+}
 
 function notifyNewWorkOrders(organizationId, payload) {
     if (!wss) {
@@ -79,6 +99,7 @@ function notifyWorkOrdersAdvance(organizationId, payload) {
 
 module.exports = {
     initWebSocket,
+    notifyNewAlert,
     notifySensorData,
     notifyNewWorkOrders,
     notifyWorkOrdersAdvance

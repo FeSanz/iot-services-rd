@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
+const { notifyNewAlert } = require('../websocket/websocket');
 
 router.get('/alerts/:companyId', async (req, res) => {
     const { companyId } = req.params;
@@ -112,28 +113,57 @@ router.get('/alertsByOrganizations', async (req, res) => {
 
 //New Alert
 router.post('/alerts', async (req, res) => {
-    const {
-        machine_id,
-        failure_id
-    } = req.body;
+    const { machine_id, failure_id } = req.body;
 
     try {
-        const result = await pool.query(
+        // 1. Insertar alerta
+        const insertResult = await pool.query(
             `
       INSERT INTO mes_alerts (
         machine_id, failure_id, status
-      ) VALUES ($1, $2, $3)
+      ) VALUES ($1, $2, 'attend')
       RETURNING *;
       `,
-            [machine_id, failure_id, 'attend']
+            [machine_id, failure_id]
         );
 
+        const insertedAlert = insertResult.rows[0];
+
+        // 2. Obtener datos completos para el payload
+        const dataResult = await pool.query(
+            `
+      SELECT 
+        a.alert_id,
+        f.area,
+        m.name AS machine_name,
+        f.name,
+        m.organization_id,
+        a.repair_time,
+        a.response_time,
+        a.start_date,
+        a.status,
+        f.type
+      FROM mes_alerts a
+      JOIN mes_machines m ON a.machine_id = m.machine_id
+      JOIN mes_failures f ON a.failure_id = f.failure_id
+      WHERE a.alert_id = $1
+      `,
+            [insertedAlert.alert_id]
+        );
+
+        const payload = dataResult.rows[0];
+
+        // 3. Notificar vía WebSocket
+        notifyNewAlert(payload.organization_id, payload);
+
+        // 4. Responder al cliente
         res.json({
             errorsExistFlag: false,
-            message: 'Alerta creada correctamente',
+            message: 'OK',
             totalResults: 1,
-            items: result.rows
+            items: [payload]
         });
+
     } catch (error) {
         console.error('Error al crear alerta:', error);
         res.status(500).json({
@@ -142,6 +172,7 @@ router.post('/alerts', async (req, res) => {
         });
     }
 });
+
 
 //Attend Alert
 router.put('/alerts/:alertId/attend', async (req, res) => {
