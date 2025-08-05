@@ -41,6 +41,7 @@ app.use('/api', require('./services/fusion/resources'));
 app.use('/api', require('./services/fusion/items'));
 app.use('/api', require('./services/fusion/shifts'));
 app.use('/api', require('./services/fusion/work_orders'));
+app.use('/api', require('./services/fusion/companies.js'));
 
 app.use('/api', require('./services/fusion/work_execution'));
 
