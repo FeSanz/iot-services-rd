@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
+const authenticateToken = require('../../middleware/authenticateToken');
 const { notifyNewAlert } = require('../websocket/websocket');
 
-router.get('/alerts/:companyId', async (req, res) => {
+router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
 
     try {
@@ -40,7 +41,7 @@ router.get('/alerts/:companyId', async (req, res) => {
 });
 
 //Obtener alertas por organizaciones
-router.get('/alertsByOrganizations', async (req, res) => {
+router.get('/alertsByOrganizations', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
 
     if (!organizations) {
@@ -112,7 +113,7 @@ router.get('/alertsByOrganizations', async (req, res) => {
 
 
 //New Alert
-router.post('/alerts', async (req, res) => {
+router.post('/alerts', authenticateToken, async (req, res) => {
     const { machine_id, failure_id } = req.body;
 
     try {
@@ -175,7 +176,7 @@ router.post('/alerts', async (req, res) => {
 
 
 //Attend Alert
-router.put('/alerts/:alertId/attend', async (req, res) => {
+router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
     const { alertId } = req.params;
 
     try {
@@ -211,7 +212,7 @@ router.put('/alerts/:alertId/attend', async (req, res) => {
     }
 });
 //Repair Alert
-router.put('/alerts/:alertId/repair', async (req, res) => {
+router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
     const { alertId } = req.params;
 
     try {
@@ -249,7 +250,7 @@ router.put('/alerts/:alertId/repair', async (req, res) => {
 
 
 //Delete Alert
-router.delete('/alerts/:alertId', async (req, res) => {
+router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
     const { alertId } = req.params;
 
     try {

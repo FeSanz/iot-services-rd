@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
 //obtener fallas
-router.get('/failuresByCompany/:companyId', async (req, res) => {
+router.get('/failuresByCompany/:companyId', authenticateToken, authenticateToken, async (req, res) => {
     const { companyId } = req.params;
 
     try {
@@ -27,7 +28,7 @@ router.get('/failuresByCompany/:companyId', async (req, res) => {
     }
 });
 //Fallas por organización
-router.get('/failuresByOrganizations', async (req, res) => {
+router.get('/failuresByOrganizations', authenticateToken, authenticateToken, async (req, res) => {
     const { organizations } = req.query;
 
     if (!organizations) {
@@ -77,7 +78,7 @@ router.get('/failuresByOrganizations', async (req, res) => {
 });
 
 //Nueva Falla
-router.post('/failures', async (req, res) => {
+router.post('/failures', authenticateToken, authenticateToken, async (req, res) => {
     const { company_id, name, type, area } = req.body;
 
     try {
@@ -106,7 +107,7 @@ router.post('/failures', async (req, res) => {
 });
 
 //Actualizar Falla
-router.put('/failures/:failureId', async (req, res) => {
+router.put('/failures/:failureId', authenticateToken, authenticateToken, async (req, res) => {
     const { failureId } = req.params;
     const { name, type, area } = req.body;
 
@@ -144,7 +145,7 @@ router.put('/failures/:failureId', async (req, res) => {
 });
 
 //Eliminar Falla
-router.delete('/failures/:failureId', async (req, res) => {
+router.delete('/failures/:failureId', authenticateToken, authenticateToken, async (req, res) => {
     const { failureId } = req.params;
 
     try {

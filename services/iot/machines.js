@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
 //obtener las máquinas por usuario
-router.get('/machines/:userId', async (req, res) => {
+router.get('/machines/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
 
     try {
@@ -23,7 +24,7 @@ router.get('/machines/:userId', async (req, res) => {
     }
 });
 //Obtener máquinas por organizaciones
-router.get('/machinesByOrganizations', async (req, res) => {
+router.get('/machinesByOrganizations', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
 
     if (!organizations) {
@@ -83,7 +84,7 @@ router.get('/machinesByOrganizations', async (req, res) => {
 });
 
 //obtener las máquinas y sus sensores por usuario
-router.get('/machinesAndSensors/:userId', async (req, res) => {
+router.get('/machinesAndSensors/:userId', authenticateToken, async (req, res) => {
     const { userId } = req.params;
 
     try {
@@ -140,7 +141,7 @@ ORDER BY
         res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
-router.get('/machinesAndSensorsByCompany/:companyId', async (req, res) => {
+router.get('/machinesAndSensorsByCompany/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
 
     try {
@@ -199,7 +200,7 @@ router.get('/machinesAndSensorsByCompany/:companyId', async (req, res) => {
         res.status(500).json({ errorsExistFlag: true, message: 'Error al consultar la base de datos' });
     }
 });
-router.get('/machinesAndSensorsByOrganizations', async (req, res) => {
+router.get('/machinesAndSensorsByOrganizations', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
 
     if (!organizations) {
@@ -283,7 +284,7 @@ router.get('/machinesAndSensorsByOrganizations', async (req, res) => {
     }
 });
 //obtener una máquina
-router.get('/machine/:machId', async (req, res) => {
+router.get('/machine/:machId', authenticateToken, async (req, res) => {
     const { machId } = req.params;
 
     try {
@@ -303,7 +304,7 @@ router.get('/machine/:machId', async (req, res) => {
     }
 });
 //agregar nueva máquina
-router.post('/machines', async (req, res) => {
+router.post('/machines', authenticateToken, async (req, res) => {
     const { organization_id, code, name, token, work_center_id, work_center, machine_class } = req.body;
     try {
         const result = await pool.query(
@@ -326,7 +327,7 @@ router.post('/machines', async (req, res) => {
     }
 });
 //actualizar máquina
-router.put('/machines/:id', async (req, res) => {
+router.put('/machines/:id', authenticateToken, async (req, res) => {
     const machineId = req.params.id;
     const { machine_name, sensors } = req.body;
 
@@ -384,7 +385,7 @@ router.put('/machines/:id', async (req, res) => {
     }
 });
 //Eliminar máquina
-router.delete('/machines/:id', async (req, res) => {
+router.delete('/machines/:id', authenticateToken, async (req, res) => {
     const sensorId = req.params.id;
     try {
         const result = await pool.query(

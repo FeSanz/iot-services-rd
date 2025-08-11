@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
 //obtener usuarios por organización
-router.get('/users', async (req, res) => {
+router.get('/users', authenticateToken, async (req, res) => {
     const { organizations, company_id } = req.query;
 
     try {
@@ -58,7 +59,7 @@ router.get('/users', async (req, res) => {
 
 
 //Nuevo usuario
-router.post('/users', async (req, res) => {
+router.post('/users', authenticateToken, async (req, res) => {
     const { role, name, type, password, email, enabled_flag, organizations } = req.body;
     const client = await pool.connect();
     try {
@@ -98,7 +99,7 @@ router.post('/users', async (req, res) => {
 });
 
 
-router.put('/users/:user_id', async (req, res) => {
+router.put('/users/:user_id', authenticateToken, async (req, res) => {
     const { user_id } = req.params;
     const { role, name, type, password, email, enabled_flag, organizations } = req.body;
 
@@ -150,7 +151,7 @@ router.put('/users/:user_id', async (req, res) => {
     }
 });
 
-router.put('/users/:user_id/status', async (req, res) => {
+router.put('/users/:user_id/status', authenticateToken, async (req, res) => {
     const { user_id } = req.params;
     const { enabled_flag } = req.body;
 
@@ -180,7 +181,7 @@ router.put('/users/:user_id/status', async (req, res) => {
 });
 
 
-router.delete('/users/:id', async (req, res) => {
+router.delete('/users/:id', authenticateToken, async (req, res) => {
     const userId = req.params.id;
     const client = await pool.connect();
 
@@ -228,12 +229,12 @@ router.delete('/users/:id', async (req, res) => {
 
 
 //Obtener cantidad de usuarios superAdmin
-router.get('/userNumber', async (req, res) => {
+router.get('/userNumber', authenticateToken, async (req, res) => {
     try {
         const query = `SELECT COUNT(*) AS user_count FROM MES_USERS WHERE ROLE = 'SuperAdmin'`;
 
-        const result = await pool.query(query);        
-        
+        const result = await pool.query(query);
+
         res.json({
             errorsExistFlag: false,
             message: 'OK',
@@ -243,7 +244,7 @@ router.get('/userNumber', async (req, res) => {
 
     } catch (error) {
         console.error('Error al obtener usuarios:', error);
-        res.status(500).json({ error: 'Error al consultar número de usuarios'});
+        res.status(500).json({ error: 'Error al consultar número de usuarios' });
     }
 });
 

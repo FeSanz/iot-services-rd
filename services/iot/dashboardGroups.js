@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
-router.get('/dashboardsGroup/byOrganizations', async (req, res) => {
+router.get('/dashboardsGroup/byOrganizations', authenticateToken, async (req, res) => {
     const orgParam = req.query.organizations;
 
     if (!orgParam) {
@@ -47,7 +48,7 @@ router.get('/dashboardsGroup/byOrganizations', async (req, res) => {
     }
 });
 // Consultar grupos de dashboards por companyId (incluye todos sus dashboards agrupados)
-router.get('/dashboardsGroup/company/:companyId', async (req, res) => {
+router.get('/dashboardsGroup/company/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
 
     try {
@@ -80,7 +81,7 @@ router.get('/dashboardsGroup/company/:companyId', async (req, res) => {
     }
 });
 //Agregar nuevo grupo de dashboards
-router.post('/dashboardsGroup', async (req, res) => {
+router.post('/dashboardsGroup', authenticateToken, async (req, res) => {
     const { group_name, description, created_by, organization_id } = req.body;
 
     try {
@@ -114,7 +115,7 @@ router.post('/dashboardsGroup', async (req, res) => {
 });
 
 //Eliminar dashboards
-router.delete('/dashboardsGroup/:id', async (req, res) => {
+router.delete('/dashboardsGroup/:id', authenticateToken, async (req, res) => {
     const groupId = req.params.id;
 
     try {
@@ -140,7 +141,7 @@ router.delete('/dashboardsGroup/:id', async (req, res) => {
     }
 });
 //reordenar el grupo de tableros
-router.put('/dashboardsGroup/order', async (req, res) => {
+router.put('/dashboardsGroup/order', authenticateToken, async (req, res) => {
     const { items } = req.body;
 
     if (!Array.isArray(items)) {
@@ -181,7 +182,7 @@ router.put('/dashboardsGroup/order', async (req, res) => {
     }
 });
 //actualizar dashboards
-router.put('/dashboardsGroup/:id', async (req, res) => {
+router.put('/dashboardsGroup/:id', authenticateToken, async (req, res) => {
     const groupId = req.params.id;
     const { group_name, description } = req.body;
 

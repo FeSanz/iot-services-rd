@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
 //obtener los sensores por usuarios
-router.get('/sensors/:machineId', async (req, res) => {
+router.get('/sensors/:machineId', authenticateToken, async (req, res) => {
     const { machineId } = req.params;
 
     try {
@@ -26,7 +27,7 @@ router.get('/sensors/:machineId', async (req, res) => {
 
 
 //agregar nuevo dispositivo
-router.post('/sensors/:machine_id', async (req, res) => {
+router.post('/sensors/:machine_id', authenticateToken, async (req, res) => {
     const { machine_id } = req.params;
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
@@ -64,7 +65,7 @@ router.post('/sensors/:machine_id', async (req, res) => {
 
 
 //actualizar sensor
-router.put('/sensors/:id', async (req, res) => {
+router.put('/sensors/:id', authenticateToken, async (req, res) => {
     const sensorId = req.params.id;
     const { name, var: variable, icon, machine_id, updated_by } = req.body;
     try {
@@ -89,7 +90,7 @@ router.put('/sensors/:id', async (req, res) => {
     }
 });
 //Eliminar Sensor
-router.delete('/sensors/:id', async (req, res) => {
+router.delete('/sensors/:id', authenticateToken, async (req, res) => {
     const sensorId = req.params.id;
 
     try {

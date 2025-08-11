@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
 //Consultar dashboards
-router.get('/dashboards/group/:groupId', async (req, res) => {
+router.get('/dashboards/group/:groupId', authenticateToken, async (req, res) => {
     const { groupId } = req.params;
     try {
         const result = await pool.query(
@@ -30,7 +31,7 @@ router.get('/dashboards/group/:groupId', async (req, res) => {
 
 
 //Agregar nuevo widget
-router.post('/dashboards', async (req, res) => {
+router.post('/dashboards', authenticateToken, async (req, res) => {
     const { dashboard_group_id, name, color, border_flag, parameters, created_by, updated_by, index, dateRange } = req.body;
     try {
         const result = await pool.query(
@@ -53,7 +54,7 @@ router.post('/dashboards', async (req, res) => {
 });
 
 //Eliminar dashboards
-router.delete('/dashboards/:id', async (req, res) => {
+router.delete('/dashboards/:id', authenticateToken, async (req, res) => {
     const dashboardId = req.params.id;
 
     try {
@@ -78,7 +79,7 @@ router.delete('/dashboards/:id', async (req, res) => {
 });
 
 // Actualiza el tamaño (colSize) de todos los tableros
-router.put('/dashboards/size', async (req, res) => {
+router.put('/dashboards/size', authenticateToken, async (req, res) => {
     const { dashboard_id, colSize } = req.body;
 
     if (!dashboard_id || typeof colSize !== 'number') {
@@ -111,7 +112,7 @@ router.put('/dashboards/size', async (req, res) => {
 
 
 //actualiza las posiciones de todos los tableros
-router.put('/dashboards/order', async (req, res) => {
+router.put('/dashboards/order', authenticateToken, async (req, res) => {
     const { items } = req.body;
 
 
@@ -143,7 +144,7 @@ router.put('/dashboards/order', async (req, res) => {
     }
 });
 //update dateRange
-router.put('/dashboards/dateRange', async (req, res) => {
+router.put('/dashboards/dateRange', authenticateToken, async (req, res) => {
     const { dashboard_id, dateRange } = req.body;
 
     if (!dateRange) {
@@ -181,7 +182,7 @@ router.put('/dashboards/dateRange', async (req, res) => {
 });
 
 //actualizar dashboards
-router.put('/dashboards/:id', async (req, res) => {
+router.put('/dashboards/:id', authenticateToken, async (req, res) => {
     const dashboardId = req.params.id;
     const { name, color, border_flag, parameters, updated_by } = req.body;
 
