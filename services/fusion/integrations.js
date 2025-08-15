@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectByParamsFromDB} = require("../../models/sql-execute");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 // Obtener registros por compañia
-router.get('/settings/:company', async (req, res) => {
+router.get('/settings/:company', authenticateToken, async (req, res) => {
     const { company } = req.params;
     const sqlQuery  = `SELECT S.setting_id AS "SettingId", S.name AS "Name", S.value AS "Value", S.description AS "Description", S.type AS "Type",
                                 S.status AS "Status", S.enabled_flag AS "EnabledFlag", S.created_by AS "CreatedBy", S.created_date AS "CreatedDate", 
@@ -18,7 +19,7 @@ router.get('/settings/:company', async (req, res) => {
 });
 
 //Insertar multiples datos de configuracion
-router.post('/settingsFusion', async (req, res) => {
+router.post('/settingsFusion', authenticateToken, async (req, res) => {
     try {
         const { CompanyId, User, items } = req.body;
 
@@ -73,7 +74,7 @@ router.post('/settingsFusion', async (req, res) => {
 });
 
 // Actualizar credenciales de fusion
-router.put('/settingsFusion', async (req, res) => {
+router.put('/settingsFusion', authenticateToken, async (req, res) => {
     try {
         const { CompanyId, User, items } = req.body;
         const payload = items || [];

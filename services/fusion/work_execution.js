@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {notifyWorkOrdersAdvance} = require("../websocket/websocket");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 //Actualizar Completado OT
-router.put('/woCompleted/:organizationId', async (req, res) => {
+router.put('/woCompleted/:organizationId', authenticateToken, async (req, res) => {
     try {
         const { organizationId } = req.params;
         const { WorkOrderNumber, ExecutionDate, Number, Ready, Scrap, Reject, Tare, Container } = req.body;

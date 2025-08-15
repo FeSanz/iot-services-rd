@@ -3,9 +3,10 @@ const router = express.Router();
 const pool = require('../../database/pool');
 const {selectByParamsFromDB} = require("../../models/sql-execute");
 const {notifyNewWorkOrders} = require("../websocket/websocket");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 // Obtener registros por organizacion y estado
-router.get('/workOrders/:organization', async (req, res) => {
+router.get('/workOrders/:organization', authenticateToken, async (req, res) => {
     const { organization } = req.params;
     const sqlQuery  = `SELECT
                                wo.work_order_id AS "WorkOrderId",
@@ -42,7 +43,7 @@ router.get('/workOrders/:organization', async (req, res) => {
 });
 
 //Insertar multiples datos
-router.post('/workOrders', async (req, res) => {
+router.post('/workOrders', authenticateToken, async (req, res) => {
     try {
         const payload = req.body.items || [];
 
@@ -174,7 +175,7 @@ router.post('/workOrders', async (req, res) => {
 
 
 // Eliminar registro por ID
-router.delete('/workOrders/:id', async (req, res) => {
+router.delete('/workOrders/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -218,7 +219,7 @@ router.delete('/workOrders/:id', async (req, res) => {
 });
 
 //Consultar maquinas por orden
-router.post('/workOrdersMachines', async (req, res) => {
+router.post('/workOrdersMachines', authenticateToken, async (req, res) => {
     try {
         const payload = req.body.items || [];
 
@@ -268,7 +269,7 @@ router.post('/workOrdersMachines', async (req, res) => {
 });
 
 //Obtener articulos de fabricacion por orden
-router.post('/WorkOrdersItems', async (req, res) => {
+router.post('/WorkOrdersItems', authenticateToken, async (req, res) => {
     try {
         const { CompanyId, items } = req.body;
         const payload = items || [];

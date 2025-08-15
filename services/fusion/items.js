@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 //Obtener todas los registros
-router.get('/items', async (req, res) => {
+router.get('/items', authenticateToken, async (req, res) => {
 
     const sqlQuery = `SELECT item_id AS "ItemId", number AS "Number", description AS "Description",
                                     uom AS "UoM", type AS "Type", lot_control AS "LotControl"
@@ -17,7 +18,7 @@ router.get('/items', async (req, res) => {
 });
 
 // Obtener registros por compañoa y tipo
-router.get('/items/:company/:type', async (req, res) => {
+router.get('/items/:company/:type', authenticateToken, async (req, res) => {
     const { company, type } = req.params;
 
     // Validaciones
@@ -50,7 +51,7 @@ router.get('/items/:company/:type', async (req, res) => {
 });
 
 //Insertar multiples datos
-router.post('/items', async (req, res) => {
+router.post('/items', authenticateToken, async (req, res) => {
     try {
         const { CompanyId, items } = req.body;
         const payload = items || [];
@@ -121,7 +122,7 @@ router.post('/items', async (req, res) => {
 
 
 // Eliminar registro por ID
-router.delete('/items/:id', async (req, res) => {
+router.delete('/items/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
 

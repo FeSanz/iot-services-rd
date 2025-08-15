@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
-const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
+const { selectByParamsFromDB} = require("../../models/sql-execute");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 // Obtener registros por organizacion
-router.get('/shifts/:organization', async (req, res) => {
+router.get('/shifts/:organization', authenticateToken, async (req, res) => {
     const { organization } = req.params;
     const sqlQuery  = `SELECT s.shift_id AS "ShiftId", s.name AS "Name",
                                      s.start_time AS "StartTime", s.end_time AS "EndTime", s.duration AS "Duration",
@@ -19,7 +20,7 @@ router.get('/shifts/:organization', async (req, res) => {
 });
 
 //Insertar multiples datos
-router.post('/shifts', async (req, res) => {
+router.post('/shifts', authenticateToken, async (req, res) => {
     try {
         const { OrganizationId, items } = req.body;
         const payload = items || [];
@@ -90,7 +91,7 @@ router.post('/shifts', async (req, res) => {
 
 
 // Eliminar registro por ID de relación organización-turno
-router.delete('/shifts/:id', async (req, res) => {
+router.delete('/shifts/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
 

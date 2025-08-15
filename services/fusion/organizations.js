@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 //Obtener todas los registros
-router.get('/organizations', async (req, res) => {
+router.get('/organizations', authenticateToken, async (req, res) => {
 
     const sqlQuery = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId", 
                             coordinates AS "Coordinates", company_id AS "CompanyId"
@@ -17,7 +18,7 @@ router.get('/organizations', async (req, res) => {
 });
 
 // Obtener registros por compañia
-router.get('/organizations/:company', async (req, res) => {
+router.get('/organizations/:company', authenticateToken, async (req, res) => {
     const { company } = req.params;
     const sqlQuery  = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", 
                                 bu_id AS "BUId", coordinates AS "Coordinates"
@@ -30,7 +31,7 @@ router.get('/organizations/:company', async (req, res) => {
 });
 
 //Insertar multiples datos
-router.post('/organizations', async (req, res) => {
+router.post('/organizations', authenticateToken, async (req, res) => {
     try {
         const payload = req.body.items || [];
 
@@ -89,7 +90,7 @@ router.post('/organizations', async (req, res) => {
 
 
 // Actualizar registro por ID
-router.put('/organizations/:id', async (req, res) => {
+router.put('/organizations/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         const { Code, Name, Location, WorkMethod, BUId } = req.body;
@@ -152,7 +153,7 @@ router.put('/organizations/:id', async (req, res) => {
 });
 
 // Eliminar registro por ID
-router.delete('/organizations/:id', async (req, res) => {
+router.delete('/organizations/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
 

@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
+const authenticateToken = require('../../middleware/authenticateToken');
 
 //Obtener todas los registros
-router.get('/resourceMachines', async (req, res) => {
+router.get('/resourceMachines', authenticateToken, async (req, res) => {
 
     const sqlQuery = `SELECT machine_id AS "MachineId", organization_id AS "OrganizationId", code AS "Code",
                                     name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter",
@@ -18,7 +19,7 @@ router.get('/resourceMachines', async (req, res) => {
 });
 
 // Obtener registros por organizacion y centro de trabajo
-router.get('/resourceMachines/:organization/:wc', async (req, res) => {
+router.get('/resourceMachines/:organization/:wc', authenticateToken, async (req, res) => {
     
     const { organization, wc } = req.params;    
 
@@ -43,7 +44,7 @@ router.get('/resourceMachines/:organization/:wc', async (req, res) => {
 });
 
 //Insertar multiples datos
-router.post('/resourceMachines', async (req, res) => {
+router.post('/resourceMachines', authenticateToken, async (req, res) => {
     try {
         const payload = req.body.items || [];        
 
@@ -102,7 +103,7 @@ router.post('/resourceMachines', async (req, res) => {
 
 
 // Eliminar registro por ID
-router.delete('/resourceMachines/:id', async (req, res) => {
+router.delete('/resourceMachines/:id', authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -147,7 +148,7 @@ router.delete('/resourceMachines/:id', async (req, res) => {
 
 
 // Obtener registros por organizacion
-router.get('/orgResourceMachines/:organization', async (req, res) => {
+router.get('/orgResourceMachines/:organization', authenticateToken, async (req, res) => {
     
     const { organization} = req.params;    
 
