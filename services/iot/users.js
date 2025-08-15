@@ -229,7 +229,7 @@ router.delete('/users/:id', authenticateToken, async (req, res) => {
 
 
 //Obtener cantidad de usuarios superAdmin
-router.get('/userNumber', authenticateToken, async (req, res) => {
+router.get('/userNumber', async (req, res) => {
     try {
         const query = `SELECT COUNT(*) AS user_count FROM MES_USERS WHERE ROLE = 'SuperAdmin'`;
 

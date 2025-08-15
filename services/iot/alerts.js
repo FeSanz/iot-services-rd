@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const authenticateToken = require('../../middleware/authenticateToken');
-const { notifyNewAlert } = require('../websocket/websocket');
+const { notifyAlert } = require('../websocket/websocket');
 
 router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
@@ -41,7 +41,7 @@ router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
 });
 
 //Obtener alertas por organizaciones
-router.get('/alertsByOrganizations', authenticateToken, async (req, res) => {
+router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
 
     if (!organizations) {
@@ -83,7 +83,7 @@ router.get('/alertsByOrganizations', authenticateToken, async (req, res) => {
             JOIN 
                 mes_failures f ON a.failure_id = f.failure_id
             WHERE 
-                m.organization_id = ANY($1)
+                m.organization_id = ANY($1) AND a.status != 'finaliced'
             ORDER BY 
                 CASE a.status
                     WHEN 'attend' THEN 1
@@ -92,6 +92,68 @@ router.get('/alertsByOrganizations', authenticateToken, async (req, res) => {
                     ELSE 4
                 END,
                 a.start_date ASC;
+            `;
+
+        const resultado = await pool.query(query, [orgIds]);
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: resultado.rows.length,
+            items: resultado.rows
+        });
+    } catch (error) {
+        console.error('Error al obtener alertas por organizaciones:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al consultar alertas por organizaciones en la base de datos'
+        });
+    }
+});
+router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, res) => {
+    const { organizations } = req.query;
+
+    if (!organizations) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Parámetro "organizations" requerido en la query (ej. ?organizations=1,2,3)'
+        });
+    }
+
+    const orgIds = organizations
+        .split(',')
+        .map(id => parseInt(id.trim()))
+        .filter(id => !isNaN(id));
+
+    if (orgIds.length === 0) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'IDs de organización inválidos en el parámetro "organizations"'
+        });
+    }
+
+    try {
+        const query = `
+            SELECT  
+                a.alert_id,
+                m.name AS machine_name,
+                m.organization_id,
+                f.area,
+                f.type,
+                f.name,
+                a.status,
+                a.start_date,
+                a.response_time,
+                a.repair_time
+            FROM 
+                mes_alerts a
+            JOIN 
+                mes_machines m ON a.machine_id = m.machine_id
+            JOIN 
+                mes_failures f ON a.failure_id = f.failure_id
+            WHERE 
+                m.organization_id = ANY($1) AND a.status = 'finaliced'
+            ORDER BY a.repair_time DESC LIMIT 5;
             `;
 
         const resultado = await pool.query(query, [orgIds]);
@@ -155,7 +217,7 @@ router.post('/alerts', authenticateToken, async (req, res) => {
         const payload = dataResult.rows[0];
 
         // 3. Notificar vía WebSocket
-        notifyNewAlert(payload.organization_id, payload);
+        notifyAlert(payload.organization_id, payload, 'new');
 
         // 4. Responder al cliente
         res.json({
@@ -177,7 +239,8 @@ router.post('/alerts', authenticateToken, async (req, res) => {
 
 //Attend Alert
 router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
-    const { alertId } = req.params;
+    const { organization_id } = req.body;
+    const { alertId, } = req.params;
 
     try {
         const result = await pool.query(
@@ -203,6 +266,9 @@ router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
             totalResults: 1,
             items: result.rows
         });
+        const payload = result.rows[0];
+
+        notifyAlert(organization_id, payload, 'update');
     } catch (error) {
         console.error('Error al actualizar estado de alerta:', error);
         res.status(500).json({
@@ -213,7 +279,8 @@ router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
 });
 //Repair Alert
 router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
-    const { alertId } = req.params;
+    const { organization_id } = req.body;
+    const { alertId, } = req.params;
 
     try {
         const result = await pool.query(
@@ -239,6 +306,9 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
             totalResults: 1,
             items: result.rows
         });
+        const payload = result.rows[0];
+
+        notifyAlert(organization_id, payload, 'update');
     } catch (error) {
         console.error('Error al actualizar estado de alerta:', error);
         res.status(500).json({
@@ -251,7 +321,8 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
 
 //Delete Alert
 router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
-    const { alertId } = req.params;
+    const { organization_id } = req.query;    
+    const { alertId, } = req.params;
 
     try {
         const result = await pool.query(
@@ -276,6 +347,9 @@ router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
             totalResults: 1,
             items: result.rows
         });
+        const payload = result.rows[0];
+
+        notifyAlert(organization_id, payload, 'delete');
     } catch (error) {
         console.error('Error al eliminar alerta:', error);
         res.status(500).json({
