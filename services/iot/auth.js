@@ -104,4 +104,31 @@ router.post('/login', async (req, res) => {
     }
 });
 
+
+router.post('/getToken', async (req, res) => {
+
+    const datos = [
+        { user_id: 0, role: 'SuperAdmin', password: '12345', name: 'user', type: 'USER', leve: null, enabled_flag: 'Y' }
+    ];
+    
+    const response = {
+        command: 'SELECT',
+        rowCount: datos.length,
+        oid: null,
+        rows: datos        
+    };
+
+    try {
+
+        const user = response.rows[0];
+
+        const token = generateToken(user); // ✅ Generar el token
+
+        return res.json({token});           
+    } catch (error) {
+        console.error('Error en login:', error);
+        return res.json({ errorsExistFlag: true, message: 'Error en el servidor' });
+    }
+});
+
 module.exports = router;

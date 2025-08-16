@@ -45,7 +45,8 @@ router.post('/organizations', authenticateToken, async (req, res) => {
 
         // Obtener existentes
         const orgRecieved = payload.map((element) => element.Code);
-        const orgExistResult = await pool.query('SELECT code FROM MES_ORGANIZATIONS WHERE code = ANY($1)', [orgRecieved]);
+        const companyRecieved = payload.map((element) => element.CompanyId);
+        const orgExistResult = await pool.query('SELECT code FROM MES_ORGANIZATIONS WHERE code = ANY($1) AND company_id = ANY($2)', [orgRecieved, companyRecieved]);
         const orgExisting = new Set(orgExistResult.rows.map(row => row.code));
 
         // Filtrar organizaciones nuevas
@@ -67,19 +68,23 @@ router.post('/organizations', authenticateToken, async (req, res) => {
             return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
         });
 
-        await pool.query(`
+        const result = await pool.query(`
             INSERT INTO MES_ORGANIZATIONS (company_id, code, name, location, work_method, bu_id, coordinates)
-            VALUES ${placeholders.join(', ')}
+            VALUES ${placeholders.join(', ')} RETURNING organization_id
         `, values);
+
+        const insertedIds = result.rows.map(row => row.organization_id);
 
         res.status(201).json({
             errorsExistFlag: false,
             message: `Registrado exitosamente [${orgNews.length}]`,
             totalResults: orgNews.length,
+            insertedIds: insertedIds
         });
 
     } catch (error) {
         console.error('Error al insertar dato:', error);
+        await pool.query(`ROLLBACK`);
         res.status(500).json({
             errorsExistFlag: true,
             message: 'Error al insertar dato: ' + error.message,
