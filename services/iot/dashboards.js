@@ -6,28 +6,90 @@ const pool = require('../../database/pool');
 //Consultar dashboards
 router.get('/dashboards/group/:groupId', authenticateToken, async (req, res) => {
     const { groupId } = req.params;
+    const { user_id } = req.query;
+
+    if (!user_id) {
+        return res.status(400).json({ errorsExistFlag: true, error: 'Se requiere user_id' });
+    }
+
     try {
-        const result = await pool.query(
+        // 1️⃣ Verificar que el usuario exista
+        const userResult = await pool.query(
+            `SELECT user_id 
+             FROM mes_users 
+             WHERE user_id = $1`,
+            [user_id]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(401).json({ errorsExistFlag: true, error: 'Usuario no encontrado' });
+        }
+
+        // 2️⃣ Obtener dashboards con su organización
+        const dashboardResult = await pool.query(
             `SELECT d.*, dg.organization_id, o.name AS organization_name 
-         FROM mes_dashboards d 
-         JOIN mes_dashboards_group dg ON d.dashboard_group_id = dg.dashboard_group_id 
-         JOIN mes_organizations o ON dg.organization_id = o.organization_id
-         WHERE d.dashboard_group_id = $1 
-         ORDER BY d.index ASC;`,
+             FROM mes_dashboards d 
+             JOIN mes_dashboards_group dg ON d.dashboard_group_id = dg.dashboard_group_id 
+             JOIN mes_organizations o ON dg.organization_id = o.organization_id
+             WHERE d.dashboard_group_id = $1 
+             ORDER BY d.index ASC;`,
             [groupId]
         );
 
+        if (dashboardResult.rows.length === 0) {
+            return res.status(404).json({ errorsExistFlag: true, error: 'No se encontraron dashboards para este grupo' });
+        }
+
+        const organizationId = dashboardResult.rows[0].organization_id;
+
+        // 3️⃣ Validar que el usuario pertenezca a la organización
+        const userOrgResult = await pool.query(
+            `SELECT *
+             FROM mes_users_org 
+             WHERE user_id = $1 AND organization_id = $2`,
+            [user_id, organizationId]
+        );
+
+        if (userOrgResult.rows.length === 0) {
+            return res.status(403).json({
+                errorsExistFlag: true, error: 'El usuario no tiene acceso a esta organización'
+            });
+        }
+
+        // 4️⃣ Obtener datos del grupo para dashboardData
+        const groupResult = await pool.query(
+            `SELECT 
+                g.dashboard_group_id,
+                g.name AS group_name,
+                g.description,
+                g.created_by,
+                g.created_date,
+                g.organization_id,
+                g.index,
+                o.name AS organization_name
+             FROM mes_dashboards_group g
+             INNER JOIN mes_organizations o ON g.organization_id = o.organization_id
+             WHERE g.dashboard_group_id = $1`,
+            [groupId]
+        );
+
+        const dashboardData = groupResult.rows[0];
+
+        // ✅ Si todo bien, devolver dashboards y dashboardData
         res.json({
             errorsExistFlag: false,
             message: 'OK',
-            totalResults: result.rows.length,
-            items: result.rows
+            totalResults: dashboardResult.rows.length,
+            items: dashboardResult.rows,
+            dashboardData
         });
+
     } catch (error) {
         console.error('Error al obtener dashboards:', error);
         res.status(500).json({ error: 'Error al consultar dashboards' });
     }
 });
+
 
 
 //Agregar nuevo widget
