@@ -25,38 +25,7 @@ router.get('/dashboards/group/:groupId', authenticateToken, async (req, res) => 
             return res.status(401).json({ errorsExistFlag: true, error: 'Usuario no encontrado' });
         }
 
-        // 2️⃣ Obtener dashboards con su organización
-        const dashboardResult = await pool.query(
-            `SELECT d.*, dg.organization_id, o.name AS organization_name 
-             FROM mes_dashboards d 
-             JOIN mes_dashboards_group dg ON d.dashboard_group_id = dg.dashboard_group_id 
-             JOIN mes_organizations o ON dg.organization_id = o.organization_id
-             WHERE d.dashboard_group_id = $1 
-             ORDER BY d.index ASC;`,
-            [groupId]
-        );
-
-        if (dashboardResult.rows.length === 0) {
-            return res.status(404).json({ errorsExistFlag: true, error: 'No se encontraron dashboards para este grupo' });
-        }
-
-        const organizationId = dashboardResult.rows[0].organization_id;
-
-        // 3️⃣ Validar que el usuario pertenezca a la organización
-        const userOrgResult = await pool.query(
-            `SELECT *
-             FROM mes_users_org 
-             WHERE user_id = $1 AND organization_id = $2`,
-            [user_id, organizationId]
-        );
-
-        if (userOrgResult.rows.length === 0) {
-            return res.status(403).json({
-                errorsExistFlag: true, error: 'El usuario no tiene acceso a esta organización'
-            });
-        }
-
-        // 4️⃣ Obtener datos del grupo para dashboardData
+        // 2️⃣ Obtener datos del grupo (independientemente de que tenga dashboards o no)
         const groupResult = await pool.query(
             `SELECT 
                 g.dashboard_group_id,
@@ -73,14 +42,43 @@ router.get('/dashboards/group/:groupId', authenticateToken, async (req, res) => 
             [groupId]
         );
 
+        if (groupResult.rows.length === 0) {
+            return res.status(404).json({ errorsExistFlag: true, error: 'Grupo no encontrado' });
+        }
+
         const dashboardData = groupResult.rows[0];
 
-        // ✅ Si todo bien, devolver dashboards y dashboardData
+        // 3️⃣ Validar que el usuario pertenezca a la organización
+        const userOrgResult = await pool.query(
+            `SELECT *
+             FROM mes_users_org 
+             WHERE user_id = $1 AND organization_id = $2`,
+            [user_id, dashboardData.organization_id]
+        );
+
+        if (userOrgResult.rows.length === 0) {
+            return res.status(403).json({
+                errorsExistFlag: true, error: 'El usuario no tiene acceso a esta organización'
+            });
+        }
+
+        // 4️⃣ Obtener dashboards del grupo
+        const dashboardResult = await pool.query(
+            `SELECT d.*, dg.organization_id, o.name AS organization_name 
+             FROM mes_dashboards d 
+             JOIN mes_dashboards_group dg ON d.dashboard_group_id = dg.dashboard_group_id 
+             JOIN mes_organizations o ON dg.organization_id = o.organization_id
+             WHERE d.dashboard_group_id = $1 
+             ORDER BY d.index ASC;`,
+            [groupId]
+        );
+
+        // ✅ Devolver aunque items esté vacío
         res.json({
             errorsExistFlag: false,
             message: 'OK',
             totalResults: dashboardResult.rows.length,
-            items: dashboardResult.rows,
+            items: dashboardResult.rows, // puede ser []
             dashboardData
         });
 
@@ -89,7 +87,6 @@ router.get('/dashboards/group/:groupId', authenticateToken, async (req, res) => 
         res.status(500).json({ error: 'Error al consultar dashboards' });
     }
 });
-
 
 
 //Agregar nuevo widget
