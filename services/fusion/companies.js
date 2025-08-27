@@ -16,6 +16,7 @@ router.post('/companies', async (req, res) => {
             message: "Los datos proporcionados ya existen"            
         });
         }
+        
         const result = await pool.query(
             `INSERT INTO MES_COMPANIES(company_id, name, description, enabled_flag
             ) VALUES(nextval('mes_companies_company_id_seq'), $1, $2, $3)

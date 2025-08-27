@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
-const {selectFromDB, selectByParamsFromDB} = require("../../models/sql-execute");
+const { selectFromDB, selectByParamsFromDB } = require("../../models/sql-execute");
 const authenticateToken = require('../../middleware/authenticateToken');
 
 //Obtener todas los registros
@@ -20,7 +20,7 @@ router.get('/organizations', authenticateToken, async (req, res) => {
 // Obtener registros por compañia
 router.get('/organizations/:company', authenticateToken, async (req, res) => {
     const { company } = req.params;
-    const sqlQuery  = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", 
+    const sqlQuery = `SELECT organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", 
                                 bu_id AS "BUId", coordinates AS "Coordinates"
                               FROM MES_ORGANIZATIONS
                               WHERE company_id = $1 ORDER BY code ASC`;
@@ -62,10 +62,33 @@ router.post('/organizations', authenticateToken, async (req, res) => {
 
         // Preparar inserción
         const values = [];
+        let paramIndex = 1;
+
         const placeholders = orgNews.map((py, index) => {
-            const base = index * 7;
-            values.push(py.CompanyId, py.Code, py.Name, py.Location, py.WorkMethod, py.BUId, py.Coordinates);
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+            const rowPlaceholders = [];            
+
+            values.push(py.CompanyId, py.Code, py.Name, py.Location, py.WorkMethod, py.BUId);
+
+            for (let i = 0; i < 6; i++) {
+                rowPlaceholders.push(`$${paramIndex++}`);
+            }
+
+            const hasValidCoordinates =
+                py.Coordinates &&
+                typeof py.Coordinates === 'object' &&
+                py.Coordinates.lng != null &&
+                py.Coordinates.lat != null;
+
+            if (hasValidCoordinates) {
+                values.push(py.Coordinates.lng, py.Coordinates.lat);
+                rowPlaceholders.push(`point($${paramIndex}, $${paramIndex + 1})`);
+                paramIndex += 2;                
+            } else {                
+                rowPlaceholders.push(`NULL`);                
+            }
+
+            return `(${rowPlaceholders.join(', ')})`;
+
         });
 
         const result = await pool.query(`
@@ -126,7 +149,7 @@ router.put('/organizations/:id', authenticateToken, async (req, res) => {
                                         SET code = $1, name = $2, location = $3, work_method = $4, bu_id = $5
                                         WHERE organization_id = $6
                                         RETURNING organization_id AS "OrganizationId", code AS "Code", name AS "Name", location AS "Location", work_method AS "WorkMethod", bu_id AS "BUId"`,
-                                        [Code, Name, Location, WorkMethod, BUId, id]);
+            [Code, Name, Location, WorkMethod, BUId, id]);
 
         res.json({
             errorsExistFlag: false,
