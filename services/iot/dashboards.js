@@ -240,6 +240,59 @@ router.put('/dashboards/dateRange', authenticateToken, async (req, res) => {
     }
 });
 
+router.put('/dashboards/multiple', authenticateToken, async (req, res) => {
+    const { widgets, updated_by } = req.body;
+    console.log(updated_by);
+    console.log(widgets);
+    
+
+    if (!Array.isArray(widgets) || widgets.length === 0) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Se requiere un arreglo de widgets para actualizar'
+        });
+    }
+
+    try {
+        const updatedItems = [];
+
+        for (const widget of widgets) {
+            const { dashboard_id, color, border_flag, parameters } = widget;
+
+            const result = await pool.query(
+                `UPDATE mes_dashboards 
+                 SET color = $1, border_flag = $2, parameters = $3::jsonb,
+                     updated_date = CURRENT_TIMESTAMP, updated_by = $4 
+                 WHERE dashboard_id = $5
+                 RETURNING *`,
+                [color, border_flag, parameters, updated_by, dashboard_id]
+            );
+
+            if (result.rows.length > 0) {
+                updatedItems.push(result.rows[0]);
+            }
+        }
+
+        if (updatedItems.length === 0) {
+            return res.status(404).json({
+                existError: true,
+                message: 'Ningún dashboard fue encontrado',
+            });
+        }
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK',
+            totalResults: updatedItems.length,
+            items: updatedItems
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar dashboards:', error);
+        res.status(500).json({ error: 'Error al actualizar dashboards' });
+    }
+});
+
 //actualizar dashboards
 router.put('/dashboards/:id', authenticateToken, async (req, res) => {
     const dashboardId = req.params.id;
@@ -273,7 +326,6 @@ router.put('/dashboards/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Error al actualizar dashboard' });
     }
 });
-
 
 
 
