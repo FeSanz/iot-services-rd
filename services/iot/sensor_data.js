@@ -162,6 +162,91 @@ router.get('/sensorsData', async (req, res) => {
     }
 });
 
+router.get('/sensorsDataHM', async (req, res) => {
+    const { sensors, start, end, limit } = req.query;
+
+    if (!sensors) {
+        return res.status(400).json({
+            errorsExistFlag: false,
+            message: 'Debe enviar el parámetro sensors con una lista de IDs'
+        });
+    }
+
+    const sensorIDs = sensors.split(',').map(id => id.trim()).filter(id => id !== '');
+    if (sensorIDs.length === 0) {
+        return res.status(400).json({
+            errorsExistFlag: false,
+            message: 'Debe enviar al menos un sensorID válido'
+        });
+    }
+
+    try {
+        const sensorsData = [];
+
+        for (const sensorID of sensorIDs) {
+            const values = [sensorID, start, end];
+            let limitClause = '';
+
+            if (limit) {
+                values.push(limit);
+                limitClause = `LIMIT $4`;
+            }
+
+            const resultado = await pool.query(`
+                WITH date_series AS (
+                    SELECT generate_series($2::timestamp, $3::timestamp, '1 day')::date AS day
+                )
+                SELECT 
+                    ds.day,
+                    s.sensor_id,
+                    s.name AS sensor_name,
+                    EXTRACT(HOUR FROM sd.date_time) AS hour,
+                    AVG(sd.value) AS avg_value
+                FROM date_series ds
+                CROSS JOIN mes_sensors s
+                LEFT JOIN mes_sensor_data sd
+                    ON sd.sensor_id = s.sensor_id
+                    AND sd.date_time::date = ds.day
+                WHERE s.sensor_id = $1
+                GROUP BY ds.day, s.sensor_id, s.name, hour
+                ORDER BY ds.day DESC, hour ASC
+                ${limitClause};
+            `, values);
+
+            // Transformar resultados en el formato esperado
+            const groupedData = resultado.rows.map(row => {
+                const dayStr = new Date(row.day).toISOString().split('T')[0]; // YYYY-MM-DD
+                const hour = row.hour !== null ? row.hour : 0;
+
+                return {
+                    value: row.avg_value !== null ? parseFloat(row.avg_value) : 0,
+                    time: `${dayStr}T${String(hour).padStart(2, '0')}:00:00Z`
+                };
+            });
+
+            sensorsData.push({
+                sensor_id: sensorID,
+                sensor_name: resultado.rows[0]?.sensor_name || null,
+                data: groupedData
+            });
+        }
+
+        res.status(200).json({
+            errorsExistFlag: false,
+            message: "OK",
+            totalSensors: sensorsData.length,
+            items: sensorsData
+        });
+
+    } catch (error) {
+        console.error('Error al obtener datos:', error);
+        res.status(500).json({
+            errorsExistFlag: false,
+            message: 'Error al consultar la base de datos'
+        });
+    }
+});
+
 //Insertar datos de sensores por arreglo
 router.post('/sensorsData', async (req, res) => {
     const { token, items } = req.body;
