@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../../database/pool');
 const authenticateToken = require('../../middleware/authenticateToken');
 const { notifyAlert } = require('../websocket/websocket');
+const { sendNotification } = require('./notifications');
 
 router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
@@ -199,7 +200,7 @@ router.post('/alerts', authenticateToken, async (req, res) => {
         a.alert_id,
         f.area,
         m.name AS machine_name,
-        f.name,
+        f.name AS failure_name,
         m.organization_id,
         a.repair_time,
         a.response_time,
@@ -218,7 +219,7 @@ router.post('/alerts', authenticateToken, async (req, res) => {
 
         // 3. Notificar vía WebSocket
         notifyAlert(payload.organization_id, payload, 'new');
-
+        await sendNotification(payload.organization_id, "❌ Nueva falla", failure_id, payload.failure_name)
         // 4. Responder al cliente
         res.json({
             errorsExistFlag: false,
@@ -321,7 +322,7 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
 
 //Delete Alert
 router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
-    const { organization_id } = req.query;    
+    const { organization_id } = req.query;
     const { alertId, } = req.params;
 
     try {

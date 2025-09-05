@@ -8,35 +8,69 @@ const serviceAccount = require("../../firebase_server/firebase-service-account.j
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
 });
-router.post('/notifyTest', async (req, res) => {
+async function sendNotification(organization, title, failure_id, body) {
     try {
-        const { token, title, body } = req.body;
-
-        if (!token || !title || !body) {
-            return res.status(400).json({ errorsExistFlag: true, message: 'token, title y body son requeridos' });
+        if (!organization || !title || !body || !failure_id) {
+            return
         }
 
-        const message = {
-            notification: {
-                title: title,
-                body: body
-            },
-            token: token // Aquí va el token del dispositivo
-        };
+        // Obtener tokens de todos los usuarios de esas organizaciones
+        const tokensRes = await pool.query(`
+            SELECT ut.token
+            FROM mes_user_push_tokens ut
+            JOIN mes_users_org uo ON ut.user_id = uo.user_id
+            WHERE uo.organization_id = $1
+    `, [organization]);
 
-        const response = await admin.messaging().send(message);
+        const tokens = tokensRes.rows.map(r => r.token);
 
-        res.status(201).json({
-            errorsExistFlag: false,
-            message: 'Notificación enviada al dispositivo',
-            firebaseResponse: response
-        });
+        if (tokens.length === 0) {
+            return
+        }
+
+        const invalidTokens = [];
+        let successCount = 0;
+        let failureCount = 0;
+
+        for (const token of tokens) {
+            const message = {
+                notification: { title, body },
+                data: {
+                    route: "/alerts",
+                    alertId: String(failure_id)
+                },
+                token
+            };
+
+            try {
+                await admin.messaging().send(message);
+                successCount++;
+            } catch (err) {
+                console.error('Error enviando a token:', token, err.code);
+                failureCount++;
+
+                if (
+                    err.code === 'messaging/invalid-argument' ||
+                    err.code === 'messaging/registration-token-not-registered'
+                ) {
+                    invalidTokens.push(token);
+                }
+            }
+        }
+
+        // Limpieza en la DB
+        if (invalidTokens.length > 0) {
+            await pool.query(
+                `DELETE FROM mes_user_push_tokens WHERE token = ANY($1::text[])`,
+                [invalidTokens]
+            );
+        }
+
 
     } catch (error) {
         console.error('Error al enviar notificación', error);
-        res.status(500).json({ error: 'Error al enviar notificación' });
     }
-});
+}
 
 router.post('/registerPushToken', authenticateToken, async (req, res) => {
     const { user_id, token } = req.body;
@@ -100,4 +134,35 @@ router.post('/registerPushToken', authenticateToken, async (req, res) => {
     }
 });
 
+router.post('/customNotification', async (req, res) => {
+    try {
+        const { token, title, body } = req.body;
+
+        if (!token || !title || !body) {
+            return res.status(400).json({ existError: true, message: 'token, title y body son requeridos' });
+        }
+
+        const message = {
+            notification: {
+                title: title,
+                body: body
+            },
+            token: token // Aquí va el token del dispositivo
+        };
+
+        const response = await admin.messaging().send(message);
+
+        res.status(201).json({
+            existError: false,
+            message: 'Notificación enviada al dispositivo',
+            firebaseResponse: response
+        });
+
+    } catch (error) {
+        console.error('Error al enviar notificación', error);
+        res.status(500).json({ error: 'Error al enviar notificación' });
+    }
+});
+
 module.exports = router;
+module.exports.sendNotification = sendNotification
