@@ -200,7 +200,7 @@ router.post('/alerts', authenticateToken, async (req, res) => {
         a.alert_id,
         f.area,
         m.name AS machine_name,
-        f.name AS failure_name,
+        f.name,
         m.organization_id,
         a.repair_time,
         a.response_time,
@@ -219,7 +219,7 @@ router.post('/alerts', authenticateToken, async (req, res) => {
 
         // 3. Notificar vía WebSocket
         notifyAlert(payload.organization_id, payload, 'new');
-        await sendNotification(payload.organization_id, "❌ Nueva falla", failure_id, payload.failure_name)
+        await sendNotification(payload.organization_id, "❌ Nueva falla", failure_id, "Máquina: " + payload.machine_name + "\nFalla: " + payload.name);
         // 4. Responder al cliente
         res.json({
             errorsExistFlag: false,
@@ -281,35 +281,66 @@ router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
 //Repair Alert
 router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
     const { organization_id } = req.body;
-    const { alertId, } = req.params;
+    const { alertId } = req.params;
 
     try {
-        const result = await pool.query(
+        // 1. Actualizar alerta
+        const updateResult = await pool.query(
             `
-      UPDATE mes_alerts
-      SET status = 'finaliced', repair_time = now(), end_date = now()
-      WHERE alert_id = $1
-      RETURNING *;
-      `,
+            UPDATE mes_alerts
+            SET status = 'finaliced', repair_time = now(), end_date = now()
+            WHERE alert_id = $1
+            RETURNING *;
+            `,
             [alertId]
         );
 
-        if (result.rowCount === 0) {
+        if (updateResult.rowCount === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
                 message: 'Alerta no encontrada'
             });
         }
 
+        const updatedAlert = updateResult.rows[0];
+
+        // 2. Obtener datos completos para notificación
+        const dataResult = await pool.query(
+            `
+            SELECT 
+                a.alert_id,
+                m.name AS machine_name,
+                f.name AS failure_name,
+                m.organization_id
+            FROM mes_alerts a
+            JOIN mes_machines m ON a.machine_id = m.machine_id
+            JOIN mes_failures f ON a.failure_id = f.failure_id
+            WHERE a.alert_id = $1
+            `,
+            [alertId]
+        );
+
+        const payload = dataResult.rows[0];
+
+        // 3. Notificar vía WebSocket
+        notifyAlert(payload.organization_id, payload, 'update');
+
+        // 4. Enviar notificación push
+        await sendNotification(
+            payload.organization_id,
+            "✅ Falla solucionada",
+            updatedAlert.failure_id,
+            "Máquina: " + payload.machine_name + "\nFalla: " + payload.failure_name
+        );
+
+        // 5. Responder al cliente
         res.json({
             errorsExistFlag: false,
             message: 'Estado de alerta actualizado correctamente',
             totalResults: 1,
-            items: result.rows
+            items: [payload]
         });
-        const payload = result.rows[0];
 
-        notifyAlert(organization_id, payload, 'update');
     } catch (error) {
         console.error('Error al actualizar estado de alerta:', error);
         res.status(500).json({
@@ -318,6 +349,7 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
         });
     }
 });
+
 
 
 //Delete Alert
