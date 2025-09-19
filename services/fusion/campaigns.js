@@ -60,7 +60,7 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
                     i.description AS item_description,
                     i.uom,
                     w.work_definition_id,
-                    w.secuence,
+                    w.sequence,
                     w.work_order_number,
                     w.planned_quantity,
                     w.completed_quantity,
@@ -72,7 +72,7 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
              LEFT JOIN mes_items i ON w.item_id = i.item_id
              LEFT JOIN mes_machines m ON w.machine_id = m.machine_id
              WHERE w.campaign_id = $1
-             ORDER BY w.work_order_id DESC`,
+             ORDER BY w.sequence ASC`,
             [campaign_id]
         );
 
@@ -180,7 +180,7 @@ router.get('/work-orders/without-campaign/:organization_id', authenticateToken, 
                     i.description AS item_description,
                     i.uom,
                     w.work_definition_id,
-                    w.secuence,
+                    w.sequence,
                     w.work_order_number,
                     w.planned_quantity,
                     w.completed_quantity,
@@ -197,7 +197,9 @@ router.get('/work-orders/without-campaign/:organization_id', authenticateToken, 
             [organization_id]
         );
 
-        res.json({ items: result.rows });
+        res.json({
+            errorsExistFlag: false, items: result.rows
+        });
     } catch (error) {
         console.error('Error al obtener órdenes sin campaña:', error);
         res.status(500).json({ error: 'Error al obtener órdenes sin campaña' });
@@ -206,30 +208,38 @@ router.get('/work-orders/without-campaign/:organization_id', authenticateToken, 
 
 
 router.put('/work-orders/assign-campaign', authenticateToken, async (req, res) => {
-    const { campaign_id, work_order_ids } = req.body;
+    const { campaign_id, work_orders } = req.body;
+    // work_orders: [{ work_order_id: 1, sequence: 10 }, { work_order_id: 2, sequence: 20 }]
 
-    if (!campaign_id || !Array.isArray(work_order_ids) || work_order_ids.length === 0) {
-        return res.status(400).json({ error: 'Campaign_id or work_order_id are missing' });
+    if (!campaign_id || !Array.isArray(work_orders) || work_orders.length === 0) {
+        return res.status(400).json({ error: 'Campaign_id y work_orders son requeridos' });
     }
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        await client.query(
-            `UPDATE mes_work_orders
-             SET campaign_id = $1
-             WHERE work_order_id = ANY($2::bigint[])`,
-            [campaign_id, work_order_ids]
-        );
+        for (const wo of work_orders) {
+            if (!wo.work_order_id || wo.sequence == null) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Cada work_order necesita work_order_id y sequence' });
+            }
+
+            await client.query(
+                `UPDATE mes_work_orders
+                 SET campaign_id = $1, sequence = $2
+                 WHERE work_order_id = $3`,
+                [campaign_id, wo.sequence, wo.work_order_id]
+            );
+        }
 
         await client.query('COMMIT');
 
         res.json({
             errorsExistFlag: false,
-            message: `Órdenes asignadas correctamente a la campaña ${campaign_id}`,
+            message: 'Órdenes asignadas correctamente',
             campaign_id,
-            work_order_ids
+            updated: work_orders.length
         });
     } catch (error) {
         await client.query('ROLLBACK');
@@ -240,5 +250,47 @@ router.put('/work-orders/assign-campaign', authenticateToken, async (req, res) =
     }
 });
 
+
+// PUT /work-orders/update-sequence
+router.put('/work-orders/update-sequence', authenticateToken, async (req, res) => {
+    const { workOrders } = req.body;
+    // workOrders: [{ work_order_id: 1, sequence: 10 }, { work_order_id: 2, sequence: 20 }, ...]
+
+    if (!Array.isArray(workOrders) || workOrders.length === 0) {
+        return res.status(400).json({ error: 'Debe enviar al menos un work order con su secuencia' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        for (const wo of workOrders) {
+            if (!wo.work_order_id || wo.sequence == null) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ errorsExistFlag: false, message: 'Cada work order necesita work_order_id y sequence' });
+            }
+            await client.query(
+                `UPDATE mes_work_orders
+                 SET sequence = $1
+                 WHERE work_order_id = $2`,
+                [wo.sequence, wo.id]
+            );
+        }
+        await client.query('COMMIT');
+        res.json({
+            errorsExistFlag: true,
+            message: 'Ok',
+            updated: workOrders.length
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al actualizar secuencias:', error);
+        res.status(500).json({
+            errorsExistFlag: true, message: 'Error al actualizar secuencias de work orders'
+        });
+    } finally {
+        client.release();
+    }
+});
 
 module.exports = router;
