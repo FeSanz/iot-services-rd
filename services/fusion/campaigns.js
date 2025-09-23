@@ -3,30 +3,6 @@ const router = express.Router();
 const authenticateToken = require('../../middleware/authenticateToken');
 const pool = require('../../database/pool');
 
-
-// 📌 Listar campañas filtradas por organization_id
-router.get('/campaigns/:organization_id', authenticateToken, async (req, res) => {
-    const { organization_id } = req.params;
-
-    try {
-        const result = await pool.query(
-            `SELECT c.*,
-                    COALESCE(COUNT(w.work_order_id), 0) AS coils
-             FROM mes_campaign c
-             LEFT JOIN mes_work_orders w ON w.campaign_id = c.campaign_id
-             WHERE c.organization_id = $1
-             GROUP BY c.campaign_id
-             ORDER BY c.last_update DESC`,
-            [organization_id]
-        );
-
-        res.json({ items: result.rows });
-    } catch (error) {
-        console.error('Error al obtener campañas:', error);
-        res.status(500).json({ error: 'Error al obtener campañas' });
-    }
-});
-
 // 📌 Devuelve la campaña especificada
 router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
     const { campaign_id } = req.params;
@@ -36,7 +12,7 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
         const campaignResult = await pool.query(
             `SELECT c.*, 
                     COALESCE(COUNT(w.work_order_id), 0) AS coils
-             FROM mes_campaign c
+             FROM mes_campaigns c
              LEFT JOIN mes_work_orders w ON w.campaign_id = c.campaign_id
              WHERE c.campaign_id = $1
              GROUP BY c.campaign_id`,
@@ -54,6 +30,7 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
             `SELECT w.work_order_id,
                     w.organization_id,
                     w.machine_id,
+                    w.lot_number as selectedlot,
                     m.name AS machine_name,
                     w.item_id,
                     i.number AS item_number,
@@ -72,7 +49,7 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
              LEFT JOIN mes_items i ON w.item_id = i.item_id
              LEFT JOIN mes_machines m ON w.machine_id = m.machine_id
              WHERE w.campaign_id = $1
-             ORDER BY w.sequence ASC`,
+             ORDER BY w.work_order_id DESC`,
             [campaign_id]
         );
 
@@ -87,9 +64,83 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
 });
 
 
+// 📌 Listar campañas filtradas por organization_id
+router.get('/campaigns/:work_center_id', authenticateToken, async (req, res) => {
+
+    const { work_center_id } = req.params;
+    if (!work_center_id) {
+        return res.status(400).json({ error: 'Falta el parámetro work_center_id' });
+    }
+    try {
+        const result = await pool.query(
+            `SELECT c.*,
+                    COALESCE(COUNT(w.work_order_id), 0) AS coils
+             FROM mes_campaigns c
+             LEFT JOIN mes_work_orders w ON w.campaign_id = c.campaign_id
+             WHERE c.work_center_id = $1
+             GROUP BY c.campaign_id
+             ORDER BY c.last_update DESC`,
+            [work_center_id]
+        );
+
+        res.json({ items: result.rows });
+    } catch (error) {
+        console.error('Error al obtener campañas:', error);
+        res.status(500).json({ error: 'Error al obtener campañas' });
+    }
+});
+// 📌 Devuelve la campaña especificada
+router.get('/work-orders/without-campaign/:work_center_id', authenticateToken, async (req, res) => {
+    const { work_center_id } = req.params;
+
+    if (!work_center_id) {
+        return res.status(400).json({ error: 'Falta el parámetro work_center_id' });
+    }
+
+    try {
+        const result = await pool.query(
+            `SELECT w.work_order_id,
+                    w.work_center_id,
+                    w.machine_id,
+                    m.name AS machine_name,
+                    w.item_id,
+                    i.number AS item_number,
+                    i.description AS item_description,
+                    i.uom,
+                    w.work_definition_id,
+                    w.sequence,
+                    w.work_order_number,
+                    w.planned_quantity,
+                    w.completed_quantity,
+                    w.status,
+                    w.start_date,
+                    w.end_date,
+                    w.type
+             FROM mes_work_orders w
+             LEFT JOIN mes_items i ON w.item_id = i.item_id
+             LEFT JOIN mes_machines m ON w.machine_id = m.machine_id
+             WHERE w.campaign_id IS NULL
+               AND w.work_center_id = $1
+               AND w.status = 'UNRELEASED'
+             ORDER BY w.work_order_id DESC`,
+            [work_center_id]
+        );
+
+        res.json({
+            errorsExistFlag: false,
+            items: result.rows
+        });
+    } catch (error) {
+        console.error('Error al obtener órdenes sin campaña:', error);
+        res.status(500).json({ error: 'Error al obtener órdenes sin campaña' });
+    }
+});
+
+
+
 // 📌 Crear campaña
 router.post('/campaigns', authenticateToken, async (req, res) => {
-    const { organization_id, code, name, description, start_date, end_date, status_telegram, enabled_flag } = req.body;
+    const { organization_id, code, name, description, start_date, end_date, status_telegram, enabled_flag, work_center_id } = req.body;
     const client = await pool.connect();
 
     if (!organization_id) {
@@ -98,11 +149,11 @@ router.post('/campaigns', authenticateToken, async (req, res) => {
 
     try {
         const result = await client.query(
-            `INSERT INTO mes_campaign 
-             (organization_id, code, name, description, start_date, end_date, last_update, status_telegram, enabled_flag)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8)
+            `INSERT INTO mes_campaigns 
+             (organization_id, code, name, description, start_date, end_date, last_update, status_telegram, enabled_flag, work_center_id)
+             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9)
              RETURNING campaign_id`,
-            [organization_id, code, name, description, start_date, end_date, status_telegram, enabled_flag || 'Y']
+            [organization_id, code, name, description, start_date, end_date, status_telegram, enabled_flag || 'Y', work_center_id]
         );
 
         res.status(201).json({
@@ -126,7 +177,7 @@ router.put('/campaigns/:id', authenticateToken, async (req, res) => {
 
     try {
         const result = await pool.query(
-            `UPDATE mes_campaign
+            `UPDATE mes_campaigns
              SET code = $1, name = $2, description = $3, start_date = $4, started_date = $5, end_date = $6,
                  last_update = NOW(), status_telegram = $7, enabled_flag = $8
              WHERE campaign_id = $9
@@ -150,7 +201,7 @@ router.delete('/campaigns/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
 
     try {
-        const result = await pool.query(`DELETE FROM mes_campaign WHERE campaign_id = $1`, [id]);
+        const result = await pool.query(`DELETE FROM mes_campaigns WHERE campaign_id = $1`, [id]);
 
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Campaña no encontrada' });
@@ -166,13 +217,14 @@ router.delete('/campaigns/:id', authenticateToken, async (req, res) => {
 
 
 ////////////////////WORK ORDERS /////////////////////
-router.get('/work-orders/without-campaign/:organization_id', authenticateToken, async (req, res) => {
-    const { organization_id } = req.params;
+router.get('/work-orders/without-campaign/:work_center_id', authenticateToken, async (req, res) => {
+    const { work_center_id } = req.params;
 
     try {
         const result = await pool.query(
             `SELECT w.work_order_id,
                     w.organization_id,
+                    w.work_center_id,
                     w.machine_id,
                     m.name AS machine_name,
                     w.item_id,
@@ -192,17 +244,54 @@ router.get('/work-orders/without-campaign/:organization_id', authenticateToken, 
              LEFT JOIN mes_items i ON w.item_id = i.item_id
              LEFT JOIN mes_machines m ON w.machine_id = m.machine_id
              WHERE w.campaign_id IS NULL
-               AND w.organization_id = $1
+               AND w.work_center_id = $1
+               AND w.status = 'UNRELEASED'
              ORDER BY w.work_order_id DESC`,
-            [organization_id]
+            [work_center_id]
         );
 
         res.json({
-            errorsExistFlag: false, items: result.rows
+            errorsExistFlag: false,
+            items: result.rows
         });
     } catch (error) {
         console.error('Error al obtener órdenes sin campaña:', error);
         res.status(500).json({ error: 'Error al obtener órdenes sin campaña' });
+    }
+});
+
+// 📌 Actualiza el lot_number de una work order
+router.put('/work-orders/update-lot/:work_order_id', authenticateToken, async (req, res) => {
+    const { work_order_id } = req.params;
+    const { lot_number } = req.body;
+    if (!lot_number) {
+        return res.status(400).json({ error: 'Debe proporcionar lot_number' });
+    }
+
+    const client = await pool.connect();
+    try {
+        const result = await client.query(
+            `UPDATE mes_work_orders
+             SET lot_number = $1
+             WHERE work_order_id = $2
+             RETURNING work_order_id, lot_number`,
+            [lot_number, work_order_id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Work order no encontrada' });
+        }
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Lot actualizado correctamente',
+            item: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error al actualizar lot_number:', error);
+        res.status(500).json({ error: 'Error al actualizar lot_number' });
+    } finally {
+        client.release();
     }
 });
 
@@ -250,20 +339,15 @@ router.put('/work-orders/assign-campaign', authenticateToken, async (req, res) =
     }
 });
 
-
 // PUT /work-orders/update-sequence
 router.put('/work-orders/update-sequence', authenticateToken, async (req, res) => {
     const { workOrders } = req.body;
-    // workOrders: [{ work_order_id: 1, sequence: 10 }, { work_order_id: 2, sequence: 20 }, ...]
-
     if (!Array.isArray(workOrders) || workOrders.length === 0) {
         return res.status(400).json({ error: 'Debe enviar al menos un work order con su secuencia' });
     }
-
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-
         for (const wo of workOrders) {
             if (!wo.work_order_id || wo.sequence == null) {
                 await client.query('ROLLBACK');
@@ -273,7 +357,7 @@ router.put('/work-orders/update-sequence', authenticateToken, async (req, res) =
                 `UPDATE mes_work_orders
                  SET sequence = $1
                  WHERE work_order_id = $2`,
-                [wo.sequence, wo.id]
+                [wo.sequence, wo.work_order_id]
             );
         }
         await client.query('COMMIT');
@@ -292,5 +376,53 @@ router.put('/work-orders/update-sequence', authenticateToken, async (req, res) =
         client.release();
     }
 });
+// Quitar campaña y secuencia de una orden
+router.delete('/work-orders/unassign/:ids', authenticateToken, async (req, res) => {
+    const { ids } = req.params;
+
+    if (!ids) {
+        return res.status(400).json({ error: 'Debe enviar al menos un work_order_id' });
+    }
+
+    // Convertir la cadena "41,43,44" en un array de números
+    const work_order_ids = ids.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+
+    if (work_order_ids.length === 0) {
+        return res.status(400).json({ error: 'No se encontraron IDs válidos' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const result = await client.query(
+            `UPDATE mes_work_orders
+             SET campaign_id = NULL,
+                 sequence = NULL
+             WHERE work_order_id = ANY($1::bigint[])
+             RETURNING work_order_id`,
+            [work_order_ids]
+        );
+
+        await client.query('COMMIT');
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Ninguna work order fue encontrada' });
+        }
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Órdenes removidas de la campaña correctamente',
+            work_order_ids: result.rows.map(r => r.work_order_id)
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error al desasignar órdenes:', error);
+        res.status(500).json({ error: 'Error al desasignar órdenes' });
+    } finally {
+        client.release();
+    }
+});
+
 
 module.exports = router;
