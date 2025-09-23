@@ -49,7 +49,7 @@ router.get('/campaign/:campaign_id', authenticateToken, async (req, res) => {
              LEFT JOIN mes_items i ON w.item_id = i.item_id
              LEFT JOIN mes_machines m ON w.machine_id = m.machine_id
              WHERE w.campaign_id = $1
-             ORDER BY w.work_order_id DESC`,
+             ORDER BY w.sequence`,
             [campaign_id]
         );
 
@@ -140,20 +140,20 @@ router.get('/work-orders/without-campaign/:work_center_id', authenticateToken, a
 
 // 📌 Crear campaña
 router.post('/campaigns', authenticateToken, async (req, res) => {
-    const { organization_id, code, name, description, start_date, end_date, status_telegram, enabled_flag, work_center_id } = req.body;
+    const { code, name, description, start_date, end_date, work_center_id, organization_id, status_telegram} = req.body;
     const client = await pool.connect();
 
     if (!organization_id) {
-        return res.status(400).json({ error: 'organization_id es requerido' });
+        return res.status(400).json({ errorsExistFlag: true, error: 'organization_id es requerido' });
     }
 
     try {
         const result = await client.query(
             `INSERT INTO mes_campaigns 
-             (organization_id, code, name, description, start_date, end_date, last_update, status_telegram, enabled_flag, work_center_id)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7, $8, $9)
+             (organization_id, code, name, description, start_date, end_date, work_center_id, status_telegram)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING campaign_id`,
-            [organization_id, code, name, description, start_date, end_date, status_telegram, enabled_flag || 'Y', work_center_id]
+            [organization_id, code, name, description, start_date, end_date, work_center_id, status_telegram]
         );
 
         res.status(201).json({
@@ -173,16 +173,15 @@ router.post('/campaigns', authenticateToken, async (req, res) => {
 // 📌 Actualizar campaña
 router.put('/campaigns/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { code, name, description, start_date, started_date, end_date, status_telegram, enabled_flag } = req.body;
+    const { code, name, description, start_date, started_date, end_date } = req.body;
 
     try {
         const result = await pool.query(
             `UPDATE mes_campaigns
-             SET code = $1, name = $2, description = $3, start_date = $4, started_date = $5, end_date = $6,
-                 last_update = NOW(), status_telegram = $7, enabled_flag = $8
-             WHERE campaign_id = $9
+             SET code = $1, name = $2, description = $3, start_date = $4, started_date = $5, end_date = $6
+             WHERE campaign_id = $7
              RETURNING campaign_id`,
-            [code, name, description, start_date, started_date, end_date, status_telegram, enabled_flag, id]
+            [code, name, description, start_date, started_date, end_date, id]
         );
 
         if (result.rowCount === 0) {
