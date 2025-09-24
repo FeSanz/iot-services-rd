@@ -39,6 +39,7 @@ app.use('/api', require('./services/iot/dashboardGroups'));
 app.use('/api', require('./services/fusion/integrations'));
 app.use('/api', require('./services/fusion/organizations'));
 app.use('/api', require('./services/fusion/resources'));
+app.use('/api', require('./services/fusion/work_centers'));
 app.use('/api', require('./services/fusion/items'));
 app.use('/api', require('./services/fusion/shifts'));
 app.use('/api', require('./services/fusion/work_orders'));

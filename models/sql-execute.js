@@ -29,7 +29,7 @@ async function selectByParamsFromDB(sqlQuery, params = []) {
         if (result.rows.length === 0) {
             return {
                     errorsExistFlag: false,
-                    message: 'Registros no encontrados',
+                    message: 'Registros no encontrados en MES',
                     totalResults: 0,
                     items: null
             };
