@@ -23,8 +23,6 @@ router.get('/dispatchPending/:organization', authenticateToken, async (req, res)
                                -- Datos de MES_MACHINES
                                wo.machine_id AS "ResourceId",
                                m.code AS "ResourceCode",
-                               m.work_center_id AS "WorkCenterId",
-                               m.work_center AS "WorkCenter",
                                -- Datos de MES_ITEMS
                                wo.item_id AS "ItemId",
                                i.number AS "ItemNumber",
@@ -111,8 +109,6 @@ router.post('/qwe', authenticateToken, async (req, res) => {
                 -- Datos de la máquina
                 m.code as machine_code,
                 m.name as machine_name,
-                m.work_center_id,
-                m.work_center,
                 -- Datos del ítem/producto
                 i.number as item_number,
                 i.description as item_description,
@@ -146,8 +142,6 @@ router.post('/qwe', authenticateToken, async (req, res) => {
                     // Datos de la máquina
                     ResourceId: row.machine_id,
                     ResourceCode: row.machine_code,
-                    WorkCenterId: row.work_center_id,
-                    WorkCenter: row.work_center,
                     // Datos del ítem/producto
                     ItemId: row.item_id,
                     ItemNumber: row.item_number,
