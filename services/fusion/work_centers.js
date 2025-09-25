@@ -8,7 +8,7 @@ const authenticateToken = require('../../middleware/authenticateToken');
 router.get('/workCenters/:organization', authenticateToken, async (req, res) => {
     const { organization } = req.params;
     const sqlQuery = `SELECT work_center_id AS "WorkCenterId", work_center_code AS "WorkCenterCode", work_center_name AS "WorkCenterName",
-                                work_area_code AS "WorkAreaCode", work_area_name AS "WorkAreaName"
+                                work_area_code AS "WorkAreaCode", work_area_name AS "WorkAreaName", fusion_id AS "FusionId" 
                               FROM MES_WORK_CENTERS
                               WHERE organization_id = $1 ORDER BY work_center_code ASC`;
 
@@ -61,13 +61,13 @@ router.post('/workCenters', authenticateToken, async (req, res) => {
           // Preparar inserción
         const values = [];
         const placeholders = wcNews.map((py, index) => {
-            const base = index * 5;
-            values.push(OrganizationId, py.WorkCenterCode, py.WorkCenterName, py.WorkAreaCode, py.WorkAreaName);
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+            const base = index * 6;
+            values.push(OrganizationId, py.WorkCenterCode, py.WorkCenterName, py.WorkAreaCode, py.WorkAreaName, py.FusionId);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_WORK_CENTERS (organization_id, work_center_code, work_center_name, work_area_code, work_area_name)
+            INSERT INTO MES_WORK_CENTERS (organization_id, work_center_code, work_center_name, work_area_code, work_area_name, fusion_id)
             VALUES ${placeholders.join(', ')}
         `, values);
 

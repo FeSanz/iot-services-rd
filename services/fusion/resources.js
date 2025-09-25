@@ -7,11 +7,20 @@ const authenticateToken = require('../../middleware/authenticateToken');
 //Obtener todas los registros
 router.get('/resourceMachines', authenticateToken, async (req, res) => {
 
-    const sqlQuery = `SELECT machine_id AS "MachineId", organization_id AS "OrganizationId", code AS "Code",
-                                    name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter",
-                                    class AS "Class", token "Token"
-                             FROM MES_MACHINES
-                             ORDER BY name ASC`;
+    const sqlQuery = `SELECT M.machine_id AS "MachineId",
+                                     M.organization_id   AS "OrganizationId",
+                                     M.code AS "Code",
+                                     M.name AS "Name",
+                                     M.class AS "Class",
+                                     M.token AS "Token",
+                                     WC.work_center_code AS "WorkCenterCode",
+                                     WC.work_center_name AS "WorkCenterName",
+                                     WC.work_area_code AS "WorkAreaCode",
+                                     WC.work_area_name AS "WorAreaName",
+                                     WC.fusion_id AS "FusionId" 
+                              FROM mes_machines M
+                                       LEFT JOIN mes_work_centers WC ON M.work_center_id = WC.work_center_id
+                             ORDER BY M.name ASC`;
 
     const result = await selectFromDB(sqlQuery);
     const statusCode = result.errorsExistFlag ? 500 : 200;
@@ -32,11 +41,20 @@ router.get('/resourceMachines/:organization/:wc', authenticateToken, async (req,
         });
     }
 
-    const sqlQuery  = `SELECT machine_id AS "MachineId", organization_id AS "OrganizationId", code AS "Code", 
-                                     name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter", 
-                                     class AS "Class", token "Token"  
-                              FROM MES_MACHINES 
-                              WHERE organization_id = $1 AND work_center_id = $2 ORDER BY code ASC`;
+    const sqlQuery  = `SELECT M.machine_id AS "MachineId",
+                              M.organization_id   AS "OrganizationId",
+                              M.code AS "Code",
+                              M.name AS "Name",
+                              M.class AS "Class",
+                              M.token AS "Token",
+                              WC.work_center_code AS "WorkCenterCode",
+                              WC.work_center_name AS "WorkCenterName",
+                              WC.work_area_code AS "WorkAreaCode",
+                              WC.work_area_name AS "WorAreaName",
+                              WC.fusion_id AS "FusionId" 
+                       FROM mes_machines M
+                                LEFT JOIN mes_work_centers WC ON M.work_center_id = WC.work_center_id
+                       WHERE M.organization_id = $1 AND M.work_center_id = $2 ORDER BY M.code ASC`;
 
     const result = await selectByParamsFromDB(sqlQuery, [organization, wc]);
     const statusCode = result.errorsExistFlag ? 500 : 200;
@@ -76,12 +94,12 @@ router.post('/resourceMachines', authenticateToken, async (req, res) => {
         const values = [];
         const placeholders = machinesNews.map((py, index) => {
             const base = index * 7;
-            values.push(py.OrganizationId, py.Code, py.Name, py.WorkCenterId, py.WorkCenter, py.Class, py.Token);
-            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+            values.push(py.OrganizationId, py.Code, py.Name, py.WorkCenterId, py.Class, py.Token);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
         });
 
         await pool.query(`
-            INSERT INTO MES_MACHINES (organization_id, code, name, work_center_id, work_center, class, token)
+            INSERT INTO MES_MACHINES (organization_id, code, name, work_center_id, class, token)
             VALUES ${placeholders.join(', ')}
         `, values);
 
@@ -161,11 +179,20 @@ router.get('/orgResourceMachines/:organization', authenticateToken, async (req, 
         });
     }
 
-    const sqlQuery  = `SELECT machine_id AS "MachineId", organization_id AS "OrganizationId", code AS "Code", 
-                                     name AS "Name", work_center_id AS "WorkCenterId", work_center AS "WorkCenter", 
-                                     class AS "Class", token "Token"  
-                              FROM MES_MACHINES 
-                              WHERE organization_id = $1 ORDER BY code ASC`;
+    const sqlQuery  = `SELECT M.machine_id AS "MachineId",
+                                      M.organization_id   AS "OrganizationId",
+                                      M.code AS "Code",
+                                      M.name AS "Name",
+                                      M.class AS "Class",
+                                      M.token AS "Token",
+                                      WC.work_center_code AS "WorkCenterCode",
+                                      WC.work_center_name AS "WorkCenterName",
+                                      WC.work_area_code AS "WorkAreaCode",
+                                      WC.work_area_name AS "WorAreaName",
+                                      WC.fusion_id AS "FusionId"
+                               FROM mes_machines M
+                                        LEFT JOIN mes_work_centers WC ON M.work_center_id = WC.work_center_id
+                              WHERE M.organization_id = $1 ORDER BY code ASC`;
 
     const result = await selectByParamsFromDB(sqlQuery, [organization]);
     const statusCode = result.errorsExistFlag ? 500 : 200;
