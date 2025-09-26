@@ -125,7 +125,6 @@ router.get('/work-orders/without-campaign/:organization_id/:work_center_id', aut
              WHERE w.campaign_id IS NULL
                AND w.organization_id = $1
                AND wc.work_center_id = $2
-               AND w.status = 'UNRELEASED'
              ORDER BY w.work_order_id DESC`,
             [organization_id, work_center_id]
         );
