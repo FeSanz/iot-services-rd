@@ -37,7 +37,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ errorsExistFlag: true, message: 'Usuario no encontrado' });
         }
 
-        const user = userResult.rows[0];
+        const user = userResult.rows[0]; 
 
         // Verificar contraseña (idealmente debería ser con bcrypt)
         const validPassword = password === user.password;

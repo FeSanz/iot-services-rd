@@ -9,7 +9,7 @@ router.get('/failuresByCompany/:companyId', authenticateToken, authenticateToken
 
     try {
         const result = await pool.query(
-            `SELECT * FROM mes_failures WHERE company_id = $1 ORDER BY failure_id;`,
+            `SELECT area, name, type, failure_id FROM mes_failures WHERE company_id = $1 ORDER BY failure_id;`,
             [companyId]
         );
 

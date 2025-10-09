@@ -72,6 +72,7 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
                 m.organization_id,
                 f.area,
                 f.type,
+                a.failure_id,
                 f.name,
                 a.status,
                 a.start_date,
@@ -87,9 +88,10 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
                 m.organization_id = ANY($1) AND a.status != 'finaliced'
             ORDER BY 
                 CASE a.status
-                    WHEN 'attend' THEN 1
-                    WHEN 'in_progress' THEN 2
-                    WHEN 'finaliced' THEN 3
+                    WHEN '0' THEN 1
+                    WHEN 'attend' THEN 2
+                    WHEN 'in_progress' THEN 3
+                    WHEN 'finaliced' THEN 4
                     ELSE 4
                 END,
                 a.start_date ASC;
@@ -173,34 +175,33 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
         });
     }
 });
-
-
 //New Alert
-router.post('/alerts', authenticateToken, async (req, res) => {
-    const { machine_id, failure_id } = req.body;
+router.post('/alerts', async (req, res) => {
+  const { MachineId, StartDate, Status, FailureId } = req.body;
 
-    try {
-        // 1. Insertar alerta
-        const insertResult = await pool.query(
-            `
+  try {
+    // 1️⃣ Insertar la alerta
+    const insertResult = await pool.query(
+      `
       INSERT INTO mes_alerts (
-        machine_id, failure_id, status
-      ) VALUES ($1, $2, 'attend')
+        machine_id, failure_id, start_date, status
+      )
+      VALUES ($1, $2, $3, $4)
       RETURNING *;
       `,
-            [machine_id, failure_id]
-        );
+      [MachineId, FailureId, StartDate, Status]
+    );
 
-        const insertedAlert = insertResult.rows[0];
+    const insertedAlert = insertResult.rows[0];
 
-        // 2. Obtener datos completos para el payload
-        const dataResult = await pool.query(
-            `
+    // 2️⃣ Obtener los datos completos para enviar como payload
+    const dataResult = await pool.query(
+      `
       SELECT 
         a.alert_id,
         f.area,
         m.name AS machine_name,
-        f.name,
+        f.name AS failure_name,
         m.organization_id,
         a.repair_time,
         a.response_time,
@@ -210,34 +211,37 @@ router.post('/alerts', authenticateToken, async (req, res) => {
       FROM mes_alerts a
       JOIN mes_machines m ON a.machine_id = m.machine_id
       JOIN mes_failures f ON a.failure_id = f.failure_id
-      WHERE a.alert_id = $1
+      WHERE a.alert_id = $1;
       `,
-            [insertedAlert.alert_id]
-        );
+      [insertedAlert.alert_id]
+    );
 
-        const payload = dataResult.rows[0];
+    const payload = dataResult.rows[0];
 
-        // 3. Notificar vía WebSocket
-        notifyAlert(payload.organization_id, payload, 'new');
-        await sendNotification(payload.organization_id, "❌ Nueva falla", failure_id, "Máquina: " + payload.machine_name + "\nFalla: " + payload.name);
-        // 4. Responder al cliente
-        res.json({
-            errorsExistFlag: false,
-            message: 'OK',
-            totalResults: 1,
-            items: [payload]
-        });
+    // 3️⃣ Notificar vía WebSocket y sistema de notificaciones
+    notifyAlert(payload.organization_id, payload, 'new');
+    await sendNotification(
+      payload.organization_id,
+      "❌ Nueva falla",
+      FailureId,
+      `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
+    );
 
-    } catch (error) {
-        console.error('Error al crear alerta:', error);
-        res.status(500).json({
-            errorsExistFlag: true,
-            message: 'Error al insertar la alerta en la base de datos'
-        });
-    }
+    // 4️⃣ Respuesta al cliente
+    res.json({
+      errorsExistFlag: false,
+      message: 'OK',
+      totalResults: 1
+    });
+
+  } catch (error) {
+    console.error('Error al crear alerta:', error);
+    res.status(500).json({
+      errorsExistFlag: true,
+      message: 'Error al insertar la alerta en la base de datos'
+    });
+  }
 });
-
-
 //Attend Alert
 router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
     const { organization_id } = req.body;
@@ -349,8 +353,43 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
         });
     }
 });
+//Repair Alert
+router.put('/alerts/:alertId/failure', authenticateToken, async (req, res) => {
+    const { alertId } = req.params;
+    const { failure_id } = req.body; // puedes cambiar el nombre según lo que envíes desde el front
 
+    try {
+        const result = await pool.query(
+            `
+      UPDATE mes_alerts
+      SET failure_id = $1, status = 'attend'
+      WHERE alert_id = $2
+      RETURNING alert_id, failure_id;
+      `,
+            [failure_id, alertId]
+        );
 
+        if (result.rowCount === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'Alerta no encontrada'
+            });
+        }
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Ok',
+            item: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('Error al asociar falla a la alerta:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al actualizar la alerta en la base de datos'
+        });
+    }
+});
 
 //Delete Alert
 router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {

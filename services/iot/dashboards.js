@@ -242,9 +242,6 @@ router.put('/dashboards/dateRange', authenticateToken, async (req, res) => {
 
 router.put('/dashboards/multiple', authenticateToken, async (req, res) => {
     const { widgets, updated_by } = req.body;
-    console.log(updated_by);
-    console.log(widgets);
-    
 
     if (!Array.isArray(widgets) || widgets.length === 0) {
         return res.status(400).json({
