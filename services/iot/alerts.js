@@ -4,6 +4,7 @@ const pool = require('../../database/pool');
 const authenticateToken = require('../../middleware/authenticateToken');
 const { notifyAlert } = require('../websocket/websocket');
 const { sendNotification } = require('./notifications');
+const {selectByParamsFromDB} = require("../../models/sql-execute");
 
 router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
@@ -23,7 +24,7 @@ router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
       JOIN mes_machines m ON a.machine_id = m.machine_id
       JOIN mes_organizations o ON m.organization_id = o.organization_id
       WHERE o.company_id = $1
-      ORDER BY a.start_date DESC;
+      ORDER BY a.start_date ORDER BY A.alert_id ASC;
     `, [companyId]);
 
         res.json({
@@ -175,6 +176,101 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
         });
     }
 });
+
+//Obtener alertas por maquina e intervalo definido
+router.get('/alertsInterval/:id/:interval', authenticateToken, async (req, res) => {
+    const { id, interval } = req.params;
+
+    // Construir la condición WHERE según el intervalo
+    let whereCondition = '';
+    let params = [id];
+
+    switch (interval) {
+        case 'today':
+            whereCondition = 'AND DATE(A.start_date) = CURRENT_DATE';
+            break;
+        case '24hours':
+            whereCondition = "AND A.start_date >= NOW() - INTERVAL '24 hours'";
+            break;
+        case '7days':
+            whereCondition = "AND A.start_date >= CURRENT_DATE - INTERVAL '7 days'";
+            break;
+        case 'week':
+            whereCondition = "AND A.start_date >= DATE_TRUNC('week', CURRENT_DATE)";
+            break;
+        case '30days':
+            whereCondition = "AND A.start_date >= CURRENT_DATE - INTERVAL '30 days'";
+            break;
+        case 'month':
+            whereCondition = "AND A.start_date >= DATE_TRUNC('month', CURRENT_DATE)";
+            break;
+        default:
+            // Si no es un intervalo predefinido, devolver error
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'Intervalo no válido'
+            });
+    }
+
+    const sqlQuery = `SELECT
+                          A.alert_id AS "AlertId",
+                          A.failure_id AS "FailureId",
+                          F."name" AS "Name",
+                          F."type" AS "Type",
+                          F."area" AS "Area",
+                          A."status" AS "Status",
+                          A.start_date AS "StartDate",
+                          A.end_date AS "EndDate",
+                          --COALESCE(A.end_date, CURRENT_TIMESTAMP) AS "EndDate" --Retornar fecha actual si es NULL
+                          A.response_time AS "ResponseDate",
+                          A.repair_time AS "RepairDate"
+                      FROM mes_alerts A
+                      LEFT JOIN mes_failures F ON A.failure_id = F.failure_id
+                      WHERE A.machine_id = $1
+                      ${whereCondition}
+                      ORDER BY A.alert_id ASC`;
+
+    const result = await selectByParamsFromDB(sqlQuery, params);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
+});
+
+//Obtener alertas por maquina e intervalo de fechas
+router.get('/alertsIntervalBetween/:id/:startDate/:endDate', authenticateToken, async (req, res) => {
+    const { id, startDate, endDate } = req.params;
+
+    // Validar formato de fechas (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Formato de fecha inválido. Use YYYY-MM-DD'
+        });
+    }
+
+    const sqlQuery = `SELECT
+                          A.alert_id AS "AlertId",
+                          A.failure_id AS "FailureId",
+                          F."name" AS "Name",
+                          F."type" AS "Type",
+                          F."area" AS "Area",
+                          A."status" AS "Status",
+                          A.start_date AS "StartDate",
+                          A.end_date AS "EndDate",
+                          --COALESCE(A.end_date, CURRENT_TIMESTAMP) AS "EndDate" --Retornar fecha actual si es NULL
+                          A.response_time AS "ResponseDate",
+                          A.repair_time AS "RepairDate"
+                      FROM mes_alerts A
+                      LEFT JOIN mes_failures F ON A.failure_id = F.failure_id
+                      WHERE A.machine_id = $1
+                      AND DATE(A.start_date) BETWEEN $2 AND $3
+                      ORDER BY A.alert_id ASC`;
+
+    const result = await selectByParamsFromDB(sqlQuery, [id, startDate, endDate]);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
+});
+
 //New Alert
 router.post('/alerts', async (req, res) => {
     const { MachineId, StartDate, Status, FailureId } = req.body;
