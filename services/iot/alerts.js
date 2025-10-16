@@ -276,58 +276,115 @@ router.post('/alerts', async (req, res) => {
     const { MachineId, StartDate, Status, FailureId } = req.body;
 
     try {
-        // 1️⃣ Insertar la alerta
-        const insertResult = await pool.query(
-            `
-      INSERT INTO mes_alerts (
-        machine_id, failure_id, start_date, status
-      )
-      VALUES ($1, $2, $3, $4)
-      RETURNING *;
-      `,
-            [MachineId, FailureId, StartDate, Status]
+        // ✅ VALIDACIONES DE ENTRADA
+        //Validar que todos los campos esenciales
+        if (MachineId === undefined || MachineId === null ||
+            FailureId === undefined || FailureId === null ||
+            Status === undefined || Status === null) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron todos los campos requeridos (MachineId,FailureId,Status)'
+            });
+        }
+
+        //Validar formato de fecha ISO 8601
+        if (StartDate) {
+            const parsedDate = new Date(StartDate);
+            if (isNaN(parsedDate.getTime())) {
+                return res.status(400).json({
+                    errorsExistFlag: true,
+                    message: 'Fecha invalida, se requiere formato ISO 8601'
+                });
+            }
+        }
+
+        //Validar que la máquina existe
+        const machineCheck = await pool.query('SELECT machine_id FROM mes_machines WHERE machine_id = $1', [MachineId]);
+
+        if (machineCheck.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: `La máquina con ID ${MachineId} no existe`
+            });
+        }
+
+        // Validar que la falla existe
+        const failureCheck = await pool.query('SELECT failure_id FROM mes_failures WHERE failure_id = $1', [FailureId]);
+
+        if (failureCheck.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: `La falla con ID ${FailureId} no existe`
+            });
+        }
+
+        //Validar que no exista una alerta abierta reciente duplicada
+        const duplicateCheck = await pool.query(`SELECT alert_id FROM mes_alerts WHERE machine_id = $1
+                                                  AND status IN ('open', 'assigned', 'attending');`,
+                                                 [MachineId]
+        );
+
+        if (duplicateCheck.rows.length > 0) {
+            return res.status(409).json({
+                errorsExistFlag: true,
+                message: `Ya existe(n) ${duplicateCheck.rows.length} falla(s) genéricas para  la máquina ${MachineId}`,
+            });
+        }
+
+        // ✅ INSERCIÓN DE DATOS
+        const insertResult = await pool.query(`INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
+                                                VALUES ($1, $2, $3, 'open') RETURNING *;`,
+                                                [MachineId, FailureId, StartDate]
         );
 
         const insertedAlert = insertResult.rows[0];
 
-        // 2️⃣ Obtener los datos completos para enviar como payload
+        // ✅ OBTENER DATOS COMPLETOS
         const dataResult = await pool.query(
-            `
-      SELECT 
-        a.alert_id,
-        f.area,
-        m.name AS machine_name,
-        f.name AS failure_name,
-        m.organization_id,
-        a.repair_time,
-        a.response_time,
-        a.start_date,
-        a.status,
-        f.type
-      FROM mes_alerts a
-      JOIN mes_machines m ON a.machine_id = m.machine_id
-      JOIN mes_failures f ON a.failure_id = f.failure_id
-      WHERE a.alert_id = $1;
-      `,
+            `SELECT
+                 a.alert_id,
+                 f.area,
+                 m.name AS machine_name,
+                 f.name AS failure_name,
+                 m.organization_id,
+                 a.repair_time,
+                 a.response_time,
+                 a.start_date,
+                 a.status,
+                 f.type
+             FROM mes_alerts a
+                      JOIN mes_machines m ON a.machine_id = m.machine_id
+                      LEFT JOIN mes_failures f ON a.failure_id = f.failure_id
+             WHERE a.alert_id = $1;`,
             [insertedAlert.alert_id]
         );
 
         const payload = dataResult.rows[0];
 
-        // 3️⃣ Notificar vía WebSocket y sistema de notificaciones
-        notifyAlert(payload.organization_id, payload, 'new');
-        await sendNotification(
-            payload.organization_id,
-            "❌ Nueva falla",
-            FailureId,
-            `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
-        );
+        // ✅ NOTIFICACIONES (con manejo de errores)
+        try {
+            notifyAlert(payload.organization_id, payload, 'new');
+        } catch (notifyError) {
+            console.error('Error al notificar vía WebSocket:', notifyError);
+        }
 
-        // 4️⃣ Respuesta al cliente
+        try {
+            await sendNotification(
+                payload.organization_id,
+                "❌ Nueva falla",
+                FailureId,
+                `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
+            );
+        } catch (notificationError) {
+            console.error('Error al enviar notificación:', notificationError);
+        }
+
+        // ✅ RESPUESTA EXITOSA
         res.json({
             errorsExistFlag: false,
             message: 'OK',
-            totalResults: 1
+            totalResults: 1,
+            AlertId: payload.alert_id
         });
 
     } catch (error) {
@@ -347,7 +404,7 @@ router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
         const result = await pool.query(
             `
       UPDATE mes_alerts
-      SET status = 'in_progress', response_time = now()
+      SET status = 'assigned', response_time = now()
       WHERE alert_id = $1
       RETURNING *;
       `,
@@ -388,7 +445,7 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
         const updateResult = await pool.query(
             `
             UPDATE mes_alerts
-            SET status = 'finaliced', repair_time = now(), end_date = now()
+            SET status = 'completed', repair_time = now(), end_date = now()
             WHERE alert_id = $1
             RETURNING *;
             `,
@@ -458,7 +515,7 @@ router.put('/alerts/:alertId/failure', authenticateToken, async (req, res) => {
         const result = await pool.query(
             `
       UPDATE mes_alerts
-      SET failure_id = $1, status = 'attend'
+      SET failure_id = $1, status = 'attending'
       WHERE alert_id = $2
       RETURNING alert_id, failure_id;
       `,
