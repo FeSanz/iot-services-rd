@@ -18,6 +18,16 @@ router.get('/settings/:company', authenticateToken, async (req, res) => {
     res.status(statusCode).json(result);
 });
 
+// Validar integración con Fusion
+router.get('/settingsFusionExist/:company', authenticateToken, async (req, res) => {
+    const { company } = req.params;
+    const sqlQuery  = `SELECT COUNT(*) FROM MES_SETTINGS S WHERE S.company_id = $1`;
+
+    const result = await selectByParamsFromDB(sqlQuery, [company]);    
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
+});
+
 //Insertar multiples datos de configuracion
 router.post('/settingsFusion', authenticateToken, async (req, res) => {
     try {
