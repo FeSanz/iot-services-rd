@@ -287,6 +287,14 @@ router.post('/alerts', async (req, res) => {
             });
         }
 
+        //Validar status
+        if (Status !== 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'Status no identificado como falla'
+            });
+        }
+
         //Validar formato de fecha ISO 8601
         if (StartDate) {
             const parsedDate = new Date(StartDate);
