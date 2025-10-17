@@ -86,13 +86,13 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
             JOIN 
                 mes_failures f ON a.failure_id = f.failure_id
             WHERE 
-                m.organization_id = ANY($1) AND a.status != 'finaliced'
+                m.organization_id = ANY($1) AND a.status != 'completed'
             ORDER BY 
                 CASE a.status
-                    WHEN '0' THEN 1
-                    WHEN 'attend' THEN 2
-                    WHEN 'in_progress' THEN 3
-                    WHEN 'finaliced' THEN 4
+                    WHEN 'open' THEN 1
+                    WHEN 'assigned' THEN 2
+                    WHEN 'attending' THEN 3
+                    WHEN 'completed' THEN 4
                     ELSE 4
                 END,
                 a.start_date ASC;
@@ -156,7 +156,7 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
             JOIN 
                 mes_failures f ON a.failure_id = f.failure_id
             WHERE 
-                m.organization_id = ANY($1) AND a.status = 'finaliced'
+                m.organization_id = ANY($1) AND a.status = 'completed'
             ORDER BY a.repair_time DESC LIMIT 5;
             `;
 
