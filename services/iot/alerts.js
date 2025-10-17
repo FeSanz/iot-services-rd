@@ -287,14 +287,6 @@ router.post('/alerts', async (req, res) => {
             });
         }
 
-        //Validar status
-        if (Status !== 0) {
-            return res.status(400).json({
-                errorsExistFlag: true,
-                message: 'Status no identificado como falla'
-            });
-        }
-
         //Validar formato de fecha ISO 8601
         if (StartDate) {
             const parsedDate = new Date(StartDate);
@@ -304,6 +296,14 @@ router.post('/alerts', async (req, res) => {
                     message: 'Fecha invalida, se requiere formato ISO 8601'
                 });
             }
+        }
+
+        //Validar status correctos
+        if (Status !== 0 && Status !== 1) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'Status invalidado, verifique sus datos'
+            });
         }
 
         //Validar que la máquina existe
@@ -316,85 +316,115 @@ router.post('/alerts', async (req, res) => {
             });
         }
 
-        // Validar que la falla existe
-        const failureCheck = await pool.query('SELECT failure_id FROM mes_failures WHERE failure_id = $1', [FailureId]);
+        // ✅ DOWNTIME - FALLA DETECTADA
+        if(Status === 0) {
+            // Validar que la falla existe
+            const failureCheck = await pool.query('SELECT failure_id FROM mes_failures WHERE failure_id = $1', [FailureId]);
 
-        if (failureCheck.rows.length === 0) {
-            return res.status(404).json({
-                errorsExistFlag: true,
-                message: `La falla con ID ${FailureId} no existe`
+            if (failureCheck.rows.length === 0) {
+                return res.status(404).json({
+                    errorsExistFlag: true,
+                    message: `La falla con ID ${FailureId} no existe`
+                });
+            }
+
+            //Validar que no exista una alerta abierta reciente duplicada
+            const duplicateCheck = await pool.query(`SELECT alert_id
+                                                     FROM mes_alerts
+                                                     WHERE machine_id = $1
+                                                       AND status IN ('open', 'assigned', 'attending');`,
+                [MachineId]
+            );
+
+            if (duplicateCheck.rows.length > 0) {
+                return res.status(409).json({
+                    errorsExistFlag: true,
+                    message: `Ya existe(n) ${duplicateCheck.rows.length} falla(s) genéricas para  la máquina ${MachineId}`,
+                });
+            }
+
+            // ✅ INSERCIÓN DE DATOS
+            const insertResult = await pool.query(`INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
+                                                   VALUES ($1, $2, $3, 'open') RETURNING *;`,
+                [MachineId, FailureId, StartDate]
+            );
+
+            const insertedAlert = insertResult.rows[0];
+
+            // ✅ OBTENER DATOS COMPLETOS
+            const dataResult = await pool.query(
+                `SELECT a.alert_id,
+                        f.area,
+                        m.name AS machine_name,
+                        f.name AS failure_name,
+                        m.organization_id,
+                        a.repair_time,
+                        a.response_time,
+                        a.start_date,
+                        a.status,
+                        f.type
+                 FROM mes_alerts a
+                          JOIN mes_machines m ON a.machine_id = m.machine_id
+                          LEFT JOIN mes_failures f ON a.failure_id = f.failure_id
+                 WHERE a.alert_id = $1;`,
+                [insertedAlert.alert_id]
+            );
+
+           await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' 
+                                                    WHERE machine_id = $1`, [MachineId]);
+
+            const payload = dataResult.rows[0];
+
+            // ✅ NOTIFICACIONES (con manejo de errores)
+            try {
+                notifyAlert(payload.organization_id, payload, 'new');
+            } catch (notifyError) {
+                console.error('Error al notificar vía WebSocket:', notifyError);
+            }
+
+            try {
+                await sendNotification(
+                    payload.organization_id,
+                    "❌ Nueva falla",
+                    FailureId,
+                    `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
+                );
+            } catch (notificationError) {
+                console.error('Error al enviar notificación:', notificationError);
+            }
+
+            // ✅ RESPUESTA EXITOSA
+            res.json({
+                errorsExistFlag: false,
+                message: 'OK',
+                totalResults: 1,
+                AlertId: payload.alert_id
             });
         }
-
-        //Validar que no exista una alerta abierta reciente duplicada
-        const duplicateCheck = await pool.query(`SELECT alert_id FROM mes_alerts WHERE machine_id = $1
+        // ✅ RUNTIME - MACHINA ACTIVA
+        else if(Status === 1) {
+            //Validar que no exista una alerta abiertas antes de intentar cambiar el STATUS
+            const alertsOpen = await pool.query(`SELECT alert_id FROM mes_alerts WHERE machine_id = $1
                                                   AND status IN ('open', 'assigned', 'attending');`,
                                                  [MachineId]
-        );
-
-        if (duplicateCheck.rows.length > 0) {
-            return res.status(409).json({
-                errorsExistFlag: true,
-                message: `Ya existe(n) ${duplicateCheck.rows.length} falla(s) genéricas para  la máquina ${MachineId}`,
-            });
-        }
-
-        // ✅ INSERCIÓN DE DATOS
-        const insertResult = await pool.query(`INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
-                                                VALUES ($1, $2, $3, 'open') RETURNING *;`,
-                                                [MachineId, FailureId, StartDate]
-        );
-
-        const insertedAlert = insertResult.rows[0];
-
-        // ✅ OBTENER DATOS COMPLETOS
-        const dataResult = await pool.query(
-            `SELECT
-                 a.alert_id,
-                 f.area,
-                 m.name AS machine_name,
-                 f.name AS failure_name,
-                 m.organization_id,
-                 a.repair_time,
-                 a.response_time,
-                 a.start_date,
-                 a.status,
-                 f.type
-             FROM mes_alerts a
-                      JOIN mes_machines m ON a.machine_id = m.machine_id
-                      LEFT JOIN mes_failures f ON a.failure_id = f.failure_id
-             WHERE a.alert_id = $1;`,
-            [insertedAlert.alert_id]
-        );
-
-        const payload = dataResult.rows[0];
-
-        // ✅ NOTIFICACIONES (con manejo de errores)
-        try {
-            notifyAlert(payload.organization_id, payload, 'new');
-        } catch (notifyError) {
-            console.error('Error al notificar vía WebSocket:', notifyError);
-        }
-
-        try {
-            await sendNotification(
-                payload.organization_id,
-                "❌ Nueva falla",
-                FailureId,
-                `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
             );
-        } catch (notificationError) {
-            console.error('Error al enviar notificación:', notificationError);
+
+            if (alertsOpen.rows.length > 0) {
+                return res.status(409).json({
+                    errorsExistFlag: true,
+                    message: `La falla aún no se a atendido para cambiar el status`,
+                });
+            }else {
+                await pool.query(`UPDATE mes_machines
+                                  SET "status" = 'Runtime'
+                                  WHERE machine_id = $1`, [MachineId]);
+
+                return res.status(200).json({
+                    errorsExistFlag: false,
+                    message: 'Status actualizado correctamente'
+                });
+            }
         }
-
-        // ✅ RESPUESTA EXITOSA
-        res.json({
-            errorsExistFlag: false,
-            message: 'OK',
-            totalResults: 1,
-            AlertId: payload.alert_id
-        });
-
     } catch (error) {
         console.error('Error al crear alerta:', error);
         res.status(500).json({
