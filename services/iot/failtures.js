@@ -77,31 +77,47 @@ router.get('/failuresByOrganizations', authenticateToken, authenticateToken, asy
     }
 });
 
-//Nueva Falla
+//Crear Single Falla
 router.post('/failures', authenticateToken, authenticateToken, async (req, res) => {
-    const { company_id, name, type, area } = req.body;
+    const { CompanyId, Name, Type, Area } = req.body;
+
+    if (CompanyId === undefined || CompanyId === null ||
+        Name === undefined || Name === null ||
+        Type === undefined || Type === null ||
+        Area === undefined || Area === null) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Todos los campos son requeridos'
+        });
+    }
 
     try {
-        const result = await pool.query(
-            `
-      INSERT INTO mes_failures (company_id, name, type, area)
-      VALUES ($1, $2, $3, $4)
-      RETURNING *;
-      `,
-            [company_id, name, type, area]
+        //Validar que nombre de falla no exista
+        const nameCheck = await pool.query('SELECT name FROM mes_failures WHERE company_id = $1 AND name ILIKE $2', [CompanyId, Name]);
+
+        if (nameCheck.rows.length > 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: `La falla con nombre ${Name} ya existe para esta compañia`
+            });
+        }
+
+        const result = await pool.query(`INSERT INTO mes_failures (company_id, name, type, area)
+                                         VALUES ($1, $2, $3, $4) RETURNING failure_id AS "FailureId";`,
+                                        [CompanyId, Name, Type, Area]
         );
 
         res.json({
             errorsExistFlag: false,
-            message: 'Falla creada correctamente',
+            message: 'Registrado correctamente',
             totalResults: 1,
             items: result.rows
         });
     } catch (error) {
-        console.error('Error al insertar falla:', error);
+        console.error('Error al insertar:', error);
         res.status(500).json({
             errorsExistFlag: true,
-            message: 'Error al insertar en la base de datos'
+            message: 'Error al insertar' + error
         });
     }
 });
@@ -150,7 +166,7 @@ router.delete('/failures/:failureId', authenticateToken, authenticateToken, asyn
 
     try {
         const result = await pool.query(
-            `DELETE FROM mes_failures WHERE failure_id = $1 RETURNING *;`,
+            `DELETE FROM mes_failures WHERE failure_id = $1;`,
             [failureId]
         );
 
