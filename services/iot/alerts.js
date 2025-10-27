@@ -4,7 +4,7 @@ const pool = require('../../database/pool');
 const authenticateToken = require('../../middleware/authenticateToken');
 const { notifyAlert } = require('../websocket/websocket');
 const { sendNotification } = require('./notifications');
-const {selectByParamsFromDB} = require("../../models/sql-execute");
+const { selectByParamsFromDB } = require("../../models/sql-execute");
 
 router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
     const { companyId } = req.params;
@@ -41,7 +41,6 @@ router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
         });
     }
 });
-
 //Obtener alertas por organizaciones
 router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
@@ -87,16 +86,17 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
                 mes_failures f ON a.failure_id = f.failure_id
             WHERE 
                 m.organization_id = ANY($1) AND a.status != 'completed'
-            ORDER BY 
-                CASE a.status
-                    WHEN 'open' THEN 1
-                    WHEN 'assigned' THEN 2
-                    WHEN 'attending' THEN 3
-                    WHEN 'completed' THEN 4
-                    ELSE 4
-                END,
-                a.start_date ASC;
+            ORDER BY a.alert_id DESC;
             `;
+        /*
+            CASE a.status
+                WHEN 'open' THEN 1
+                WHEN 'assigned' THEN 2
+                WHEN 'attending' THEN 3
+                WHEN 'completed' THEN 4
+                ELSE 4
+            END,
+            a.start_date ASC;*/
 
         const resultado = await pool.query(query, [orgIds]);
 
@@ -114,6 +114,7 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
         });
     }
 });
+//Finalizar alertas
 router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
 
@@ -176,7 +177,6 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
         });
     }
 });
-
 //Obtener alertas por maquina e intervalo definido
 router.get('/alertsInterval/:id/:interval', authenticateToken, async (req, res) => {
     const { id, interval } = req.params;
@@ -234,7 +234,6 @@ router.get('/alertsInterval/:id/:interval', authenticateToken, async (req, res) 
     const statusCode = result.errorsExistFlag ? 500 : 200;
     res.status(statusCode).json(result);
 });
-
 //Obtener alertas por maquina e intervalo de fechas
 router.get('/alertsIntervalBetween/:id/:startDate/:endDate', authenticateToken, async (req, res) => {
     const { id, startDate, endDate } = req.params;
@@ -270,7 +269,6 @@ router.get('/alertsIntervalBetween/:id/:startDate/:endDate', authenticateToken, 
     const statusCode = result.errorsExistFlag ? 500 : 200;
     res.status(statusCode).json(result);
 });
-
 //New Alert
 router.post('/alerts', async (req, res) => {
     const { MachineId, StartDate, Status, FailureId } = req.body;
@@ -317,7 +315,7 @@ router.post('/alerts', async (req, res) => {
         }
 
         // ✅ DOWNTIME - FALLA DETECTADA
-        if(Status === 0) {
+        if (Status === 0) {
             // Validar que la falla existe
             const failureCheck = await pool.query('SELECT failure_id FROM mes_failures WHERE failure_id = $1', [FailureId]);
 
@@ -370,7 +368,7 @@ router.post('/alerts', async (req, res) => {
                 [insertedAlert.alert_id]
             );
 
-           await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' 
+            await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' 
                                                     WHERE machine_id = $1`, [MachineId]);
 
             const payload = dataResult.rows[0];
@@ -386,7 +384,7 @@ router.post('/alerts', async (req, res) => {
                 await sendNotification(
                     payload.organization_id,
                     "❌ Nueva falla",
-                    FailureId,
+                    payload.alert_id, // ✅ Cambiado de FailureId a alert_id
                     `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
                 );
             } catch (notificationError) {
@@ -402,11 +400,11 @@ router.post('/alerts', async (req, res) => {
             });
         }
         // ✅ RUNTIME - MACHINA ACTIVA
-        else if(Status === 1) {
+        else if (Status === 1) {
             //Validar que no exista una alerta abiertas antes de intentar cambiar el STATUS
             const alertsOpen = await pool.query(`SELECT alert_id FROM mes_alerts WHERE machine_id = $1
                                                   AND status IN ('open', 'assigned', 'attending');`,
-                                                 [MachineId]
+                [MachineId]
             );
 
             if (alertsOpen.rows.length > 0) {
@@ -414,7 +412,7 @@ router.post('/alerts', async (req, res) => {
                     errorsExistFlag: true,
                     message: `La falla aún no se a atendido para cambiar el status`,
                 });
-            }else {
+            } else {
                 await pool.query(`UPDATE mes_machines
                                   SET "status" = 'Runtime'
                                   WHERE machine_id = $1`, [MachineId]);
@@ -544,33 +542,68 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
         });
     }
 });
-//Repair Alert
+//Asignar Falla
 router.put('/alerts/:alertId/failure', authenticateToken, async (req, res) => {
     const { alertId } = req.params;
-    const { failure_id } = req.body; // puedes cambiar el nombre según lo que envíes desde el front
+    const { failure_id } = req.body;
 
     try {
-        const result = await pool.query(
-            `
-      UPDATE mes_alerts
-      SET failure_id = $1, status = 'attending'
-      WHERE alert_id = $2
-      RETURNING alert_id, failure_id;
-      `,
+        // 1. Actualizar alerta con nueva falla y estado 'attending'
+        const updateResult = await pool.query(
+            `UPDATE mes_alerts
+             SET failure_id = $1, status = 'attending'
+             WHERE alert_id = $2
+             RETURNING *;`,
             [failure_id, alertId]
         );
 
-        if (result.rowCount === 0) {
+        if (updateResult.rowCount === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
                 message: 'Alerta no encontrada'
             });
         }
 
+        // 2. Obtener datos completos para notificación
+        const dataResult = await pool.query(
+            `SELECT 
+                a.alert_id,
+                m.name AS machine_name,
+                f.name AS failure_name,
+                m.organization_id
+             FROM mes_alerts a
+             JOIN mes_machines m ON a.machine_id = m.machine_id
+             LEFT JOIN mes_failures f ON a.failure_id = f.failure_id
+             WHERE a.alert_id = $1`,
+            [alertId]
+        );
+
+        const payload = dataResult.rows[0];
+
+        // 3. Notificar vía WebSocket
+        try {
+            notifyAlert(payload.organization_id, payload, 'update');
+        } catch (notifyError) {
+            console.error('Error al notificar vía WebSocket:', notifyError);
+        }
+
+        // 4. Enviar notificación de actualización (MISMA FUNCIÓN)
+        try {
+            await sendNotification(
+                payload.organization_id,
+                "❌ Nueva falla (actualizada)",
+                alertId, // ✅ Mismo alert_id = actualiza la notificación
+                `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
+            );
+        } catch (notificationError) {
+            console.error('Error al enviar notificación:', notificationError);
+        }
+
+        // 5. Responder al cliente
         res.json({
             errorsExistFlag: false,
             message: 'Ok',
-            item: result.rows[0]
+            item: payload
         });
 
     } catch (error) {
@@ -581,7 +614,6 @@ router.put('/alerts/:alertId/failure', authenticateToken, async (req, res) => {
         });
     }
 });
-
 //Delete Alert
 router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
     const { organization_id } = req.query;
@@ -621,7 +653,5 @@ router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
         });
     }
 });
-
-
 
 module.exports = router;

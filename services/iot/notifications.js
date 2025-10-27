@@ -18,10 +18,10 @@ const serviceAccount = {
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
 });
-async function sendNotification(organization, title, failure_id, body) {
+async function sendNotification(organization, title, alert_id, body) {
     try {
-        if (!organization || !title || !body || !failure_id) {
-            return
+        if (!organization || !title || !body || !alert_id) {
+            return;
         }
 
         // Obtener tokens de todos los usuarios de esas organizaciones
@@ -30,12 +30,12 @@ async function sendNotification(organization, title, failure_id, body) {
             FROM mes_user_push_tokens ut
             JOIN mes_users_org uo ON ut.user_id = uo.user_id
             WHERE uo.organization_id = $1
-    `, [organization]);
+        `, [organization]);
 
         const tokens = tokensRes.rows.map(r => r.token);
 
         if (tokens.length === 0) {
-            return
+            return;
         }
 
         const invalidTokens = [];
@@ -47,9 +47,15 @@ async function sendNotification(organization, title, failure_id, body) {
                 notification: { title, body },
                 data: {
                     route: "/alerts",
-                    alertId: String(failure_id)
+                    alertId: String(alert_id)
                 },
-                token
+                token,
+                android: {
+                    notification: {
+                        tag: `alert_${alert_id}`, // 🔑 CLAVE: Mismo tag para actualizar
+                        channelId: "alerts_channel"
+                    }
+                }
             };
 
             try {
@@ -75,7 +81,6 @@ async function sendNotification(organization, title, failure_id, body) {
                 [invalidTokens]
             );
         }
-
 
     } catch (error) {
         console.error('Error al enviar notificación', error);
@@ -151,13 +156,13 @@ router.post('/customNotification', async (req, res) => {
         if (!token || !title || !body) {
             return res.status(400).json({ existError: true, message: 'token, title y body son requeridos' });
         }
-
         const message = {
-            notification: {
-                title: title,
-                body: body
+            notification: { title, body },
+            data: {
+                route: "/alerts",
+                alertId: String(failure_id)
             },
-            token: token // Aquí va el token del dispositivo
+            token
         };
 
         const response = await admin.messaging().send(message);
