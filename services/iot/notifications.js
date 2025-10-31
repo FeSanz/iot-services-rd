@@ -88,7 +88,7 @@ async function sendNotification(organization, title, alert_id, body) {
 }
 
 router.post('/registerPushToken', authenticateToken, async (req, res) => {
-    const { user_id, token } = req.body;
+    const { user_id, model = "UNKNOWN", token } = req.body;
 
     if (!user_id || !token) {
         return res.status(400).json({
@@ -107,9 +107,9 @@ router.post('/registerPushToken', authenticateToken, async (req, res) => {
         if (tokenCheck.rows.length === 0) {
             // Token nuevo → insertarlo
             await pool.query(
-                `INSERT INTO mes_user_push_tokens (user_id, token, created_at)
-         VALUES ($1, $2, NOW())`,
-                [user_id, token]
+                `INSERT INTO mes_user_push_tokens (user_id, token, model, created_at)
+         VALUES ($1, $2, $3, NOW())`,
+                [user_id, model, token]
             );
             return res.json({
                 errorsExistFlag: false,
@@ -130,9 +130,9 @@ router.post('/registerPushToken', authenticateToken, async (req, res) => {
         // Token registrado para otro usuario → reasignarlo al nuevo usuario
         await pool.query(
             `UPDATE mes_user_push_tokens
-       SET user_id = $1, updated_at = NOW()
-       WHERE token = $2`,
-            [user_id, token]
+       SET user_id = $1, user_id = $2, updated_at = NOW()
+       WHERE token = $3`,
+            [user_id, model, token]
         );
 
         return res.json({
