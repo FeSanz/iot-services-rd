@@ -109,7 +109,7 @@ router.post('/registerPushToken', authenticateToken, async (req, res) => {
             await pool.query(
                 `INSERT INTO mes_user_push_tokens (user_id, token, model, created_at)
          VALUES ($1, $2, $3, NOW())`,
-                [user_id, model, token]
+                [user_id, token, model]
             );
             return res.json({
                 errorsExistFlag: false,
