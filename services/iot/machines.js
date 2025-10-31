@@ -386,28 +386,55 @@ router.put('/machines/:id', authenticateToken, async (req, res) => {
 });
 //Eliminar máquina
 router.delete('/machines/:id', authenticateToken, async (req, res) => {
-    const sensorId = req.params.id;
+    const machineId = req.params.id; // Cambié el nombre de la variable
+    const client = await pool.connect();
+    
     try {
-        const result = await pool.query(
-            'DELETE FROM MES_MACHINES WHERE machine_id = $1 RETURNING *',
-            [sensorId]
+        await client.query('BEGIN');
+        
+        // 1. Primero eliminar datos de sensores
+        await client.query(`
+            DELETE FROM mes_sensor_data 
+            WHERE sensor_id IN (
+                SELECT sensor_id FROM mes_sensors WHERE machine_id = $1
+            )
+        `, [machineId]);
+        
+        // 2. Luego eliminar los sensores
+        await client.query(`
+            DELETE FROM mes_sensors WHERE machine_id = $1
+        `, [machineId]);
+        
+        // 3. Finalmente eliminar la máquina
+        const result = await client.query(
+            'DELETE FROM mes_machines WHERE machine_id = $1 RETURNING *',
+            [machineId]
         );
 
         if (result.rowCount === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Máquina no encontrado'
+                message: 'Máquina no encontrada'
             });
         }
 
+        await client.query('COMMIT');
+        
         res.json({
             errorsExistFlag: false,
             message: 'OK',
             items: result.rows[0]
         });
     } catch (error) {
-        console.error('Error al eliminar sensor:', error);
-        res.status(500).json({ errorsExistFlag: true, message: 'Error al eliminar sensor' });
+        await client.query('ROLLBACK');
+        console.error('Error al eliminar máquina:', error);
+        res.status(500).json({ 
+            errorsExistFlag: true, 
+            message: 'Error al eliminar máquina' 
+        });
+    } finally {
+        client.release();
     }
 });
 module.exports = router;

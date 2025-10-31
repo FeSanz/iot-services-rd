@@ -194,7 +194,7 @@ router.get('/sensorsDataHM', async (req, res) => {
 
             const resultado = await pool.query(`
                 WITH date_series AS (
-                    SELECT generate_series($2::timestamp, $3::timestamp, '1 day')::date AS day
+                    SELECT generate_series($2::timestamp, $3::timestamp - interval '1 day', '1 day')::date AS day
                 )
                 SELECT 
                     ds.day,

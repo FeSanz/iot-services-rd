@@ -88,7 +88,6 @@ router.get('/dashboards/group/:groupId', authenticateToken, async (req, res) => 
     }
 });
 
-
 //Agregar nuevo widget
 router.post('/dashboards', authenticateToken, async (req, res) => {
     const { dashboard_group_id, name, color, border_flag, parameters, created_by, updated_by, index, dateRange } = req.body;
@@ -169,7 +168,6 @@ router.put('/dashboards/size', authenticateToken, async (req, res) => {
     }
 });
 
-
 //actualiza las posiciones de todos los tableros
 router.put('/dashboards/order', authenticateToken, async (req, res) => {
     const { items } = req.body;
@@ -202,6 +200,7 @@ router.put('/dashboards/order', authenticateToken, async (req, res) => {
         client.release();
     }
 });
+
 //update dateRange
 router.put('/dashboards/dateRange', authenticateToken, async (req, res) => {
     const { dashboard_id, dateRange } = req.body;

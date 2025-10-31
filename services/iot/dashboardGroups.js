@@ -117,18 +117,32 @@ router.post('/dashboardsGroup', authenticateToken, async (req, res) => {
 //Eliminar dashboards
 router.delete('/dashboardsGroup/:id', authenticateToken, async (req, res) => {
     const groupId = req.params.id;
+    const client = await pool.connect();
 
     try {
-        const result = await pool.query(
-            `DELETE FROM mes_dashboards_group 
-             WHERE dashboard_group_id = $1 
-             RETURNING *`,
+        await client.query('BEGIN');
+
+        // 1. Primero eliminar todos los dashboards del grupo
+        await client.query(
+            'DELETE FROM mes_dashboards WHERE dashboard_group_id = $1',
+            [groupId]
+        );
+
+        // 2. Luego eliminar el grupo
+        const result = await client.query(
+            'DELETE FROM mes_dashboards_group WHERE dashboard_group_id = $1 RETURNING *',
             [groupId]
         );
 
         if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Grupo no encontrado' });
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                errorsExistFlag: true,
+                error: 'Grupo no encontrado'
+            });
         }
+
+        await client.query('COMMIT');
 
         res.json({
             errorsExistFlag: false,
@@ -136,8 +150,14 @@ router.delete('/dashboardsGroup/:id', authenticateToken, async (req, res) => {
             items: result.rows[0]
         });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error al eliminar grupo:', error);
-        res.status(500).json({ error: 'Error al eliminar grupo de dashboards' });
+        res.status(500).json({
+            errorsExistFlag: true,
+            error: 'Error al eliminar grupo de dashboards'
+        });
+    } finally {
+        client.release();
     }
 });
 //reordenar el grupo de tableros
