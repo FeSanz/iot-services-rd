@@ -305,13 +305,13 @@ router.get('/machine/:machId', authenticateToken, async (req, res) => {
 });
 //agregar nueva máquina
 router.post('/machines', authenticateToken, async (req, res) => {
-    const { organization_id, code, name, token, work_center_id, work_center, machine_class } = req.body;
+    const { organization_id, code, name, token, machine_class } = req.body;
     try {
         const result = await pool.query(
-            `INSERT INTO MES_MACHINES(organization_id, code, name, token, work_center_id, work_center, class
-            ) VALUES($1, $2, $3, $4, $5, $6, $7)
+            `INSERT INTO MES_MACHINES(organization_id, code, name, token, class
+            ) VALUES($1, $2, $3, $4, $5)
         RETURNING * `,
-            [organization_id, code, name, token, work_center_id, work_center, machine_class]
+            [organization_id, code, name, token, machine_class]
         );
         res.status(201).json({
             errorsExistFlag: false,
