@@ -43,7 +43,9 @@ router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
 });
 //Obtener alertas por organizaciones
 router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res) => {
-    const { organizations } = req.query;
+    const { organizations, start_date } = req.query;
+    console.log(start_date);
+    
 
     if (!organizations) {
         return res.status(400).json({
@@ -65,7 +67,8 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
     }
 
     try {
-        const query = `
+        // Si se envía start_date, agregamos el filtro
+        let query = `
             SELECT  
                 a.alert_id,
                 m.name AS machine_name,
@@ -85,20 +88,20 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
             JOIN 
                 mes_failures f ON a.failure_id = f.failure_id
             WHERE 
-                m.organization_id = ANY($1) AND a.status != 'completed'
-            ORDER BY a.alert_id DESC;
-            `;
-        /*
-            CASE a.status
-                WHEN 'open' THEN 1
-                WHEN 'assigned' THEN 2
-                WHEN 'attending' THEN 3
-                WHEN 'completed' THEN 4
-                ELSE 4
-            END,
-            a.start_date ASC;*/
+                m.organization_id = ANY($1)
+                AND a.status != 'completed'
+        `;
 
-        const resultado = await pool.query(query, [orgIds]);
+        const params = [orgIds]; // Parametro 1
+
+        if (start_date) {
+            query += ` AND a.start_date >= $2 `;
+            params.push(start_date); // Parametro 2
+        }
+
+        query += ` ORDER BY a.alert_id DESC;`;
+
+        const resultado = await pool.query(query, params);
 
         res.json({
             errorsExistFlag: false,
@@ -106,6 +109,7 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
             totalResults: resultado.rows.length,
             items: resultado.rows
         });
+
     } catch (error) {
         console.error('Error al obtener alertas por organizaciones:', error);
         res.status(500).json({
@@ -114,6 +118,7 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
         });
     }
 });
+
 //Finalizar alertas
 router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, res) => {
     const { organizations } = req.query;
