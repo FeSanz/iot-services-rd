@@ -44,9 +44,6 @@ router.get('/alerts/:companyId', authenticateToken, async (req, res) => {
 //Obtener alertas por organizaciones
 router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res) => {
     const { organizations, start_date } = req.query;
-    console.log(start_date);
-    
-
     if (!organizations) {
         return res.status(400).json({
             errorsExistFlag: true,
@@ -478,15 +475,16 @@ router.put('/alerts/:alertId/attend', authenticateToken, async (req, res) => {
 });
 //Repair Alert
 router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
-    const { organization_id } = req.body;
     const { alertId } = req.params;
 
     try {
-        // 1. Actualizar alerta
+        // 1️⃣ Actualizar alerta
         const updateResult = await pool.query(
             `
             UPDATE mes_alerts
-            SET status = 'completed', repair_time = now(), end_date = now()
+            SET status = 'completed',
+                repair_time = now(),
+                end_date = now()
             WHERE alert_id = $1
             RETURNING *;
             `,
@@ -502,39 +500,50 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
 
         const updatedAlert = updateResult.rows[0];
 
-        // 2. Obtener datos completos para notificación
+        // 2️⃣ Obtener datos completos para notificación (incluye machine_id)
         const dataResult = await pool.query(
             `
             SELECT 
                 a.alert_id,
+                a.machine_id,
                 m.name AS machine_name,
                 f.name AS failure_name,
                 m.organization_id
             FROM mes_alerts a
             JOIN mes_machines m ON a.machine_id = m.machine_id
             JOIN mes_failures f ON a.failure_id = f.failure_id
-            WHERE a.alert_id = $1
+            WHERE a.alert_id = $1;
             `,
             [alertId]
         );
 
         const payload = dataResult.rows[0];
 
-        // 3. Notificar vía WebSocket
+        // 3️⃣ Actualizar status de la máquina
+        await pool.query(
+            `
+            UPDATE mes_machines
+            SET status = 'Runtime'
+            WHERE machine_id = $1;
+            `,
+            [payload.machine_id]
+        );
+
+        // 4️⃣ Notificar vía WebSocket
         notifyAlert(payload.organization_id, payload, 'update');
 
-        // 4. Enviar notificación push
+        // 5️⃣ Enviar notificación push
         await sendNotification(
             payload.organization_id,
             "✅ Falla solucionada",
             updatedAlert.failure_id,
-            "Máquina: " + payload.machine_name + "\nFalla: " + payload.failure_name
+            `Máquina: ${payload.machine_name}\nFalla: ${payload.failure_name}`
         );
 
-        // 5. Responder al cliente
+        // 6️⃣ Responder al cliente
         res.json({
             errorsExistFlag: false,
-            message: 'Estado de alerta actualizado correctamente',
+            message: 'Estado de alerta y máquina actualizados correctamente',
             totalResults: 1,
             items: [payload]
         });
@@ -543,7 +552,7 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
         console.error('Error al actualizar estado de alerta:', error);
         res.status(500).json({
             errorsExistFlag: true,
-            message: 'Error al actualizar el estado de la alerta'
+            message: 'Error al actualizar el estado de la alerta o la máquina'
         });
     }
 });
