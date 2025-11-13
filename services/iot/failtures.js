@@ -125,37 +125,47 @@ router.post('/failures', authenticateToken, authenticateToken, async (req, res) 
 //Actualizar Falla
 router.put('/failures/:failureId', authenticateToken, authenticateToken, async (req, res) => {
     const { failureId } = req.params;
-    const { name, type, area } = req.body;
+    const { CompanyId, Name, Type, Area } = req.body;
+
+    if ( failureId === undefined || failureId === null ||
+        CompanyId === undefined || CompanyId === null ||
+        Name === undefined || Name === null ||
+        Type === undefined || Type === null ||
+        Area === undefined || Area === null) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'Todos los campos son requeridos'
+        });
+    }
 
     try {
-        const result = await pool.query(
-            `
-      UPDATE mes_failures
-      SET name = $1, type = $2, area = $3
-      WHERE failure_id = $4
-      RETURNING *;
-      `,
-            [name, type, area, failureId]
-        );
+        //Validar que nombre de falla no exista
+        const nameCheck = await pool.query('SELECT name FROM mes_failures WHERE company_id = $1 AND name ILIKE $2', [CompanyId, Name]);
 
-        if (result.rowCount === 0) {
+        if (nameCheck.rows.length > 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
-                message: 'Falla no encontrada'
+                message: `La falla con nombre ${Name} ya existe para esta compañia`
             });
         }
 
+        const result = await pool.query(`UPDATE mes_failures SET name = $2, type = $3, area = $4
+                                         WHERE failure_id = $1 
+                                         RETURNING name AS "Name", type AS "Type", area AS "Area";`,
+                                        [failureId, Name, Type, Area]
+        );
+
         res.json({
             errorsExistFlag: false,
-            message: 'Falla actualizada correctamente',
+            message: 'Actualizado correctamente',
             totalResults: 1,
             items: result.rows
         });
     } catch (error) {
-        console.error('Error al actualizar falla:', error);
+        console.error('Error al actualizar:', error);
         res.status(500).json({
             errorsExistFlag: true,
-            message: 'Error al actualizar en la base de datos'
+            message: 'Error al actualizar' + error
         });
     }
 });
