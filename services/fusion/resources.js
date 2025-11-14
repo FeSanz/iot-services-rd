@@ -81,7 +81,8 @@ router.get('/orgResourceMachines/:organization', authenticateToken, async (req, 
                                       M.name AS "Name",
                                       M.class AS "Class",
                                       M.status AS "Status",
-                                      M.token AS "Token",
+                                      M.token AS "Token",     
+                                      M.work_center_id AS "WorkCenterId",                                 
                                       WC.work_center_code AS "WorkCenterCode",
                                       WC.work_center_name AS "WorkCenterName",
                                       WC.work_area_code AS "WorkAreaCode",
@@ -197,6 +198,52 @@ router.delete('/resourceMachines/:id', authenticateToken, async (req, res) => {
         });
     }
 });
+
+//Eliminar múltiples registros
+router.delete('/resourceMachines', authenticateToken, async (req, res) => {
+    try {
+        const machinesId = req.body.items.map(item => item.MachineId);
+        const placeholders = machinesId.map((_, index) => `$${index + 1}`).join(', ');
+
+        // Verificar si el registro existe
+        const checkResult = await pool.query(`SELECT machine_id FROM MES_MACHINES WHERE machine_id in (${placeholders})`, machinesId);
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'Registros no encontrados',
+                totalResults: 0
+            });
+        }
+        
+        await pool.query(`DELETE FROM MES_MACHINES WHERE machine_id in (${placeholders})`, machinesId);
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Eliminación exitosa',
+            totalResults: 0
+        });
+
+    } catch (error) {
+        console.error('Error al eliminar : ', error);
+
+        // Manejar error de constraint de foreign key
+        if (error.code === '23503') {
+            return res.status(409).json({
+                errorsExistFlag: true,
+                message: 'No se puede eliminar porque está siendo utilizado por otros registros',
+                totalResults: 0
+            });
+        }
+
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al eliminar: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
+
 
 // Actualizar registro por ID
 router.put('/resourceMachines/:id', authenticateToken, async (req, res) => {
