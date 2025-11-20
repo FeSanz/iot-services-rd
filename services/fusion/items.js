@@ -120,6 +120,63 @@ router.post('/items', authenticateToken, async (req, res) => {
     }
 });
 
+//Actualizar registro por ID 
+router.put('/items/:id', authenticateToken, async (req, res) => {
+    const itemId = req.params.id;
+    try {
+        const payload = req.body.items || [];            
+
+        if (payload.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron datos',
+                totalResults: 0
+            });
+        }
+
+        // Obtener existentes        
+        const itemExistResult = await pool.query('SELECT number FROM MES_ITEMS WHERE number = ANY($1)', [payload.Number]); 
+        const itemExisting = new Set(itemExistResult.rows.map(row => row.number));
+
+        // Filtrar datos de items proporcionados
+        const itemsNew = payload.filter(element => !itemExisting.has(element.number));
+
+        if (itemsNew.length === 0) {            
+            return res.status(200).json({
+                errorsExistFlag: false,
+                message: 'Todas los datos proporcionados ya existen',
+                totalResults: 0
+            });
+        }
+
+        // Preparar actualización
+        const values = [];
+        const placeholders = itemsNew.map((py, index) => {
+            const base = index * 6;
+            values.push(py.Number, py.Description, py.UoM, py.Type, py.LotControl);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`;
+        });        
+
+        await pool.query(`
+            UPDATE MES_ITEMS SET number = $2, description = $3, uom = $4, type = $5, lot_control = $6
+            WHERE item_id = $1`,[itemId, values[0], values[1], values[2], values[3], values[4]]
+        );
+
+        res.status(201).json({
+            errorsExistFlag: false,
+            message: `Artículo actualizado exitosamente [${itemsNew.length}]`,
+            totalResults: itemsNew.length,
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar datos:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al actualizar datos: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
 
 // Eliminar registro por ID
 router.delete('/items/:id', authenticateToken, async (req, res) => {
@@ -164,6 +221,52 @@ router.delete('/items/:id', authenticateToken, async (req, res) => {
         });
     }
 });
+
+//Eliminar múltiples registros
+router.delete('/items', authenticateToken, async (req, res) => {
+    try {
+        const itemsId = req.body.items.map(item => item.ItemId);
+        const placeholders = itemsId.map((_, index) => `$${index + 1}`).join(', ');
+
+        // Verificar si el registro existe
+        const checkResult = await pool.query(`SELECT item_id FROM MES_ITEMS WHERE item_id in (${placeholders})`, itemsId);
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'Registros no encontrados',
+                totalResults: 0
+            });
+        }
+        
+        await pool.query(`DELETE FROM MES_ITEMS WHERE item_id in (${placeholders})`, itemsId);
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Eliminación exitosa',
+            totalResults: 0
+        });
+
+    } catch (error) {
+        console.error('Error al eliminar : ', error);
+
+        // Manejar error de constraint de foreign key
+        if (error.code === '23503') {
+            return res.status(409).json({
+                errorsExistFlag: true,
+                message: 'No se puede eliminar porque está siendo utilizado por otros registros',
+                totalResults: 0
+            });
+        }
+
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al eliminar: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
+
 
 //Exportar el router
 module.exports = router;
