@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
 const { notifyWorkOrdersAdvance } = require("../websocket/websocket");
+const authenticateToken = require("../../middleware/authenticateToken");
+const {selectByParamsFromDB} = require("../../models/sql-execute");
 
 router.put('/woCompleted/:organizationId', async (req, res) => {
     try {
@@ -145,6 +147,54 @@ router.put('/woCompleted/:organizationId', async (req, res) => {
             items: null
         });
     }
+});
+
+router.get('/lastWOCompleted/:organizationId', authenticateToken, async (req, res) => {
+    const { organizationId } = req.params;
+    const sqlQuery  = `SELECT
+                           wo.work_order_id AS "WorkOrderId",
+                           wo.work_order_number AS "WorkOrderNumber",
+                           wo.item_id AS "ItemId",
+                           wo.completed_quantity AS "CompletedQuantity",
+                           wo.machine_id AS "ResourceId",
+                           m.code AS "ResourceCode",
+                           i.number AS "ItemNumber",
+                           i.description AS "Description",
+                           i.uom AS "UoM",
+                           -- Últimas 5 ejecuciones TOTALES
+                           we.work_execution_id AS "WorkExecutionId",
+                           we.execution_date AS "ExecutionDate",
+                           we.number AS "ExecutionNumber",
+                           we.ready AS "Ready",
+                           we.scrap AS "Scrap",
+                           we.reject AS "Reject",
+                           we.tare AS "Tare",
+                           we.container AS "Container"
+                       FROM (
+                                SELECT
+                                    work_execution_id,
+                                    work_order_id,
+                                    execution_date,
+                                    number,
+                                    ready,
+                                    scrap,
+                                    reject,
+                                    tare,
+                                    container
+                                FROM mes_work_execution
+                                ORDER BY work_execution_id DESC
+                                    LIMIT 5
+                            ) we
+                                INNER JOIN MES_WORK_ORDERS wo ON we.work_order_id = wo.work_order_id
+                                LEFT JOIN MES_MACHINES m ON wo.machine_id = m.machine_id
+                                LEFT JOIN MES_ITEMS i ON wo.item_id = i.item_id
+                       WHERE wo.organization_id = $1
+                         AND wo.status IN ('RELEASED', 'IN_PROCESS')
+                       ORDER BY we.work_execution_id DESC;`;
+
+    const result = await selectByParamsFromDB(sqlQuery, [organizationId]);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
 });
 
 module.exports = router;
