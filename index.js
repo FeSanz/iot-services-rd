@@ -49,6 +49,7 @@ app.use('/api', require('./services/fusion/campaigns.js'));
 
 app.use('/api', require('./services/fusion/work_execution'));
 app.use('/api', require('./services/fusion/dispatch_orders') );
+app.use('/api', require('./services/fusion/codes.js') );
 
 const { initWebSocket } = require('./services/websocket/websocket');
 
