@@ -167,7 +167,6 @@ router.post('/workOrders', authenticateToken, async (req, res) => {
     }
 });
 
-
 // Eliminar registro por ID
 router.delete('/workOrders/:id', authenticateToken, async (req, res) => {
     try {
@@ -189,6 +188,51 @@ router.delete('/workOrders/:id', authenticateToken, async (req, res) => {
         res.json({
             errorsExistFlag: false,
             message: 'Eliminado exitosamente',
+            totalResults: 0
+        });
+
+    } catch (error) {
+        console.error('Error al eliminar : ', error);
+
+        // Manejar error de constraint de foreign key
+        if (error.code === '23503') {
+            return res.status(409).json({
+                errorsExistFlag: true,
+                message: 'No se puede eliminar porque está siendo utilizado por otros registros',
+                totalResults: 0
+            });
+        }
+
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al eliminar: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
+
+// Eliminar múltiple órdenes
+router.delete('/workOrders', authenticateToken, async (req, res) => {
+    try {
+        const workOrdersId = req.body.items.map(item => item.WorkOrderId);
+        const placeholders = workOrdersId.map((_, index) => `$${index + 1}`).join(', ');
+
+        // Verificar si el registro existe
+        const checkResult = await pool.query(`SELECT work_order_id FROM MES_WORK_ORDERS WHERE work_order_id in (${placeholders})`, workOrdersId);
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'Registros no encontrados',
+                totalResults: 0
+            });
+        }
+        
+        await pool.query(`DELETE FROM MES_WORK_ORDERS WHERE work_order_id in (${placeholders})`, workOrdersId);
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'Eliminación exitosa',
             totalResults: 0
         });
 
@@ -346,6 +390,65 @@ router.post('/WorkOrdersItems', authenticateToken, async (req, res) => {
         res.status(500).json({
             errorsExistFlag: true,
             message: 'Error al insertar dato: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
+
+
+// Actualizar registro por ID
+router.put('/workOrders/:id', authenticateToken, async (req, res) => {
+    const workOrderId = req.params.id;
+    try {
+        const payload = req.body.items || [];            
+
+        if (payload.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'No se proporcionaron datos',
+                totalResults: 0
+            });
+        }
+
+        // Obtener existentes    
+        const ordersExistResult = await pool.query('SELECT work_order_number FROM MES_WORK_ORDERS WHERE work_order_number = ANY($1)', [payload.WorkOrderNumber]);        
+        const ordersExisting = new Set(ordersExistResult.rows.map(row => row.WorkOrderNumber));
+
+        // Filtrar datos de orden proporcionada
+        const ordersNew = payload.filter(element => !ordersExisting.has(element.WorkOrderNumber));
+
+        if (ordersNew.length === 0) {            
+            return res.status(200).json({
+                errorsExistFlag: false,
+                message: 'Todas los datos proporcionados ya existen',
+                totalResults: 0
+            });
+        }
+
+        // Preparar actualización
+        const values = [];
+        const placeholders = ordersNew.map((py, index) => {
+            const base = index * 8;
+            values.push(py.WorkOrderNumber, py.PlannedQuantity, py.CompletedQuantity, py.StartDate, py.CompletionDate, py.Status, py.MachineId, py.ItemId);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+        });        
+
+        await pool.query(`
+            UPDATE MES_WORK_ORDERS SET work_order_number = $2, planned_quantity = $3, completed_quantity = $4, start_date = $5, end_date = $6, status = $7, machine_id = $8, item_id = $9
+            WHERE work_order_id = $1`,[workOrderId, values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7]]
+        );
+
+        res.status(201).json({
+            errorsExistFlag: false,
+            message: `OT actualizada exitosamente [${ordersNew.length}]`,
+            totalResults: ordersNew.length,
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar datos:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al actualizar datos: ' + error.message,
             totalResults: 0
         });
     }
