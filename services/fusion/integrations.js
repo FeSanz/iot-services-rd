@@ -83,6 +83,65 @@ router.post('/settingsFusion', authenticateToken, async (req, res) => {
     }
 });
 
+
+//Registrar cualquier configuración
+router.post('/settings', authenticateToken, async (req, res) => {
+    try {
+        const { CompanyId, User, items } = req.body;
+
+        if (!CompanyId || !User || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'Faltan datos requeridos: Company, User, o Data está vacío',
+                totalResults: 0
+            });
+        }
+        
+        const names = items.map(item => item.Name);
+
+        // Verificar si el parametro existe, ya no continuar
+        const stgExistResult = await pool.query(`SELECT S.value FROM MES_SETTINGS S 
+                                                    WHERE S.company_id = $1 AND S.name = ANY($2)`,
+                                                [CompanyId, names]);
+        
+        if (stgExistResult.rows.length >= 1) {
+            return res.status(200).json({
+                errorsExistFlag: true,
+                message: 'Configuraciones ya fueron registradas',
+                totalResults: 0
+            });
+        }
+
+        // Preparar inserción
+        const values = [];
+        const placeholders = items.map((py, index) => {
+            const base = index * 9;
+            values.push(CompanyId, py.Name, py.Value, py.Description, py.Type, 'Verificado', 'Y', User, User);
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, 
+                     $${base + 8}, $${base + 9})`;
+        });
+
+        await pool.query(`
+            INSERT INTO MES_SETTINGS (company_id, name, value, description, type, status, enabled_flag, created_by, updated_by)
+            VALUES ${placeholders.join(', ')}
+        `, values);
+
+        res.status(201).json({
+            errorsExistFlag: false,
+            message: `Registrado exitosamente [${items.length}]`,
+            totalResults: items.length
+        });
+
+    } catch (error) {
+        console.error('Error al insertar dato:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al insertar dato: ' + error.message,
+            totalResults: 0
+        });
+    }
+});
+
 // Actualizar credenciales de fusion
 router.put('/settingsFusion', authenticateToken, async (req, res) => {
     try {
