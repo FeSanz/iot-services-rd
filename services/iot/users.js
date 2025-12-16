@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authenticateToken = require('../../middleware/authenticateToken');
+const tokenService = require('../../middleware/tokenService');
 const pool = require('../../database/pool');
 
 //obtener usuarios por organización
@@ -43,7 +44,6 @@ router.get('/users', authenticateToken, async (req, res) => {
         `;
 
         const result = await pool.query(query, [orgArray]);
-
         res.json({
             errorsExistFlag: false,
             message: 'OK',
@@ -56,7 +56,6 @@ router.get('/users', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Error al consultar usuarios' });
     }
 });
-
 
 //Nuevo usuario
 router.post('/users', authenticateToken, async (req, res) => {
@@ -98,6 +97,32 @@ router.post('/users', authenticateToken, async (req, res) => {
     }
 });
 
+// Force logout - Admin solamente
+router.get('/force-logout/:userId', (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+
+        if (isNaN(userId)) {
+            return res.status(400).json({
+                errorsExistFlag: true,
+                message: 'ID de usuario inválido'
+            });
+        }
+
+        tokenService.revokeAllUserTokens(userId);
+
+        res.json({
+            errorsExistFlag: false,
+            message: `Todas las sesiones del usuario ${userId} han sido cerradas`
+        });
+    } catch (error) {
+        console.error('Error forzando logout:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al cerrar sesiones'
+        });
+    }
+});
 
 router.put('/users/:user_id', authenticateToken, async (req, res) => {
     const { user_id } = req.params;
@@ -133,9 +158,9 @@ router.put('/users/:user_id', authenticateToken, async (req, res) => {
                 );
             }
         }
-
         await client.query('COMMIT');
 
+        tokenService.revokeAllUserTokens(parseInt(user_id));
         res.status(200).json({
             errorsExistFlag: false,
             message: 'OK',
@@ -153,6 +178,7 @@ router.put('/users/:user_id', authenticateToken, async (req, res) => {
 
 router.put('/users/:user_id/status', authenticateToken, async (req, res) => {
     const { user_id } = req.params;
+    userId = parseInt(user_id);
     const { enabled_flag } = req.body;
 
     if (!['Y', 'N'].includes(enabled_flag)) {
@@ -169,6 +195,8 @@ router.put('/users/:user_id/status', authenticateToken, async (req, res) => {
             return res.status(404).json({ error: 'Usuario no encontrado' });
         }
 
+
+        tokenService.revokeAllUserTokens(user_id);
         res.status(200).json({
             errorsExistFlag: false,
             message: 'OK',
@@ -179,7 +207,6 @@ router.put('/users/:user_id/status', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Error interno al actualizar el estado del usuario' });
     }
 });
-
 
 router.delete('/users/:id', authenticateToken, async (req, res) => {
     const userId = req.params.id;
@@ -227,7 +254,6 @@ router.delete('/users/:id', authenticateToken, async (req, res) => {
     }
 });
 
-
 //Obtener cantidad de usuarios superAdmin
 router.get('/userNumber', async (req, res) => {
     try {
@@ -247,5 +273,4 @@ router.get('/userNumber', async (req, res) => {
         res.status(500).json({ error: 'Error al consultar número de usuarios' });
     }
 });
-
 module.exports = router;
