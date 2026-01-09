@@ -354,7 +354,21 @@ router.post('/alerts', async (req, res) => {
             [orgId]
         );
 
+        const openAlertCheck = await pool.query(`
+            SELECT alert_id
+            FROM mes_alerts
+            WHERE machine_id = $1
+            AND status = 'open'
+            LIMIT 1;
+        `, [machineId]);
 
+        if (openAlertCheck.rows.length > 0) {
+            return res.status(409).json({
+                errorsExistFlag: true,
+                message: 'Ya existe una falla en estado OPEN para esta máquina',
+                AlertId: openAlertCheck.rows[0].alert_id
+            });
+        }
 
         // Insertar alerta
         const insertResult = await pool.query(`
