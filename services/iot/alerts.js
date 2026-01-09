@@ -688,14 +688,14 @@ router.put('/alerts/:alertId/repair', authenticateToken, async (req, res) => {
             [companyId]
         );
         // 4️⃣ Actualizar status de la máquina
-        await pool.query(
+        /*await pool.query(
             `
             UPDATE mes_machines
             SET status = 'Runtime'
             WHERE machine_id = $1;
             `,
             [payload.machine_id]
-        );
+        );*/
 
         // 5️⃣ Notificar vía WebSocket
         notifyAlert(payload.organization_id, { ...payload, status: "runtime" }, 'update');
