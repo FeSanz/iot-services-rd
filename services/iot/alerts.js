@@ -354,22 +354,27 @@ router.post('/alerts', async (req, res) => {
             [orgId]
         );
 
-        const openAlertCheck = await pool.query(`
+        // 🔍 Verificar si existen alertas activas para la máquina
+        const activeAlertsResult = await pool.query(
+            `
             SELECT alert_id
             FROM mes_alerts
             WHERE machine_id = $1
-            AND status = 'open'
-            LIMIT 1;
-        `, [machineId]);
-
-        if (openAlertCheck.rows.length > 0) {
+            AND status IN ('assigned', 'attending', 'open')
+            LIMIT 10;
+            `,
+            [machineId]
+        );
+        console.log("1");
+        if (activeAlertsResult.rows.length > 0) {
+            console.log("2");
             return res.status(409).json({
                 errorsExistFlag: true,
-                message: 'Ya existe una falla en estado OPEN para esta máquina',
-                AlertId: openAlertCheck.rows[0].alert_id
+                message: `Ya existe(n) ${activeAlertsResult.rows.length} falla(s) activa(s) para la máquina ${machineName}`,
+                alertId: activeAlertsResult.rows[0].alert_id
             });
         }
-
+        console.log("3");
         // Insertar alerta
         const insertResult = await pool.query(`
                 INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
@@ -445,7 +450,7 @@ router.post('/alerts', async (req, res) => {
             }
 
             // Validar que no haya alertas abiertas
-            const duplicateCheck = await pool.query(`
+            /*const duplicateCheck = await pool.query(`
                 SELECT alert_id
                 FROM mes_alerts
                 WHERE machine_id = $1
@@ -457,7 +462,7 @@ router.post('/alerts', async (req, res) => {
                     errorsExistFlag: true,
                     message: `Ya existe(n) ${duplicateCheck.rows.length} falla(s) activas para la máquina ${machineName}`,
                 });
-            }
+            }*/
 
 
             // ✅ Validar PUSH_FLAG para notificaciones push
