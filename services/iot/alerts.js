@@ -301,11 +301,24 @@ router.get('/alertsIntervalBetween/:id/:startDate/:endDate', authenticateToken, 
     const statusCode = result.errorsExistFlag ? 500 : 200;
     res.status(statusCode).json(result);
 });
+router.get('/ping', (req, res) => {
+    return res.status(200).json({
+        status: "ok",
+    });
+});
 //New Alert
 router.post('/alerts', async (req, res) => {
-    const { MachineId, StartDate, Status, FailureId } = req.body; // MachineId sigue siendo el token
+    const { MachineId, StartDate, Status, FailureId, is_ping } = req.body; // MachineId sigue siendo el token
     //sendTestEmail('sanchezbrando197@gmail.com');
     try {
+
+        // 🟢 1️⃣ VALIDAR PING (SALIDA TEMPRANA)
+        if (is_ping === true) {
+            return res.status(200).json({
+                ok: true,
+                message: 'Ping recibido correctamente'
+            });
+        }
         // ✅ VALIDACIONES DE ENTRADA
         if (!MachineId || FailureId === undefined || FailureId === null || Status === undefined || Status === null) {
             return res.status(400).json({
@@ -365,16 +378,13 @@ router.post('/alerts', async (req, res) => {
             `,
             [machineId]
         );
-        console.log("1");
         if (activeAlertsResult.rows.length > 0) {
-            console.log("2");
             return res.status(409).json({
                 errorsExistFlag: true,
                 message: `Ya existe(n) ${activeAlertsResult.rows.length} falla(s) activa(s) para la máquina ${machineName}`,
                 alertId: activeAlertsResult.rows[0].alert_id
             });
         }
-        console.log("3");
         // Insertar alerta
         const insertResult = await pool.query(`
                 INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
