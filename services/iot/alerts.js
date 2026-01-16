@@ -386,14 +386,16 @@ router.post('/alerts', async (req, res) => {
             });
         }
         // Insertar alerta
-        const insertResult = await pool.query(`
+
+        if (Status === 0) {
+            const insertResult = await pool.query(`
                 INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
                 VALUES ($1, $2, $3, 'open') RETURNING *;
             `, [machineId, FailureId, StartDate]);
 
-        const insertedAlert = insertResult.rows[0];
-        // Obtener datos completos
-        const dataResult = await pool.query(`
+            const insertedAlert = insertResult.rows[0];
+            // Obtener datos completos
+            const dataResult = await pool.query(`
                 SELECT a.alert_id,
                        f.area,
                        m.name AS machine_name,
@@ -409,18 +411,19 @@ router.post('/alerts', async (req, res) => {
                 LEFT JOIN mes_failures f ON a.failure_id = f.failure_id
                 WHERE a.alert_id = $1;
             `, [insertedAlert.alert_id]);
+            // Actualizar estado de máquina
+            await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' WHERE machine_id = $1`, [machineId]);
 
-        // Actualizar estado de máquina
-        await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' WHERE machine_id = $1`, [machineId]);
+            const payload = dataResult.rows[0];
 
-        const payload = dataResult.rows[0];
-
-        // ✅ Notificación WebSocket (siempre se envía)
-        try {
-            notifyAlert(payload.organization_id, payload, 'new');
-        } catch (err) {
-            console.error('Error al notificar vía WebSocket:', err);
+            // ✅ Notificación WebSocket (siempre se envía)
+            try {
+                notifyAlert(payload.organization_id, payload, 'new');
+            } catch (err) {
+                console.error('Error al notificar vía WebSocket:', err);
+            }
         }
+
         if (orgResult.rows.length === 0) {
             return res.status(404).json({
                 errorsExistFlag: true,
