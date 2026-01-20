@@ -191,30 +191,27 @@ router.get('/sensorsDataHM', async (req, res) => {
                 limitClause = `LIMIT $4`;
             }
             const resultado = await pool.query(`
-                WITH date_series AS (
-                    SELECT generate_series(
-                        $2::timestamptz,
-                        $3::timestamptz,
-                        interval '1 day'
-                    ) AS day_start
-                )
                 SELECT
-                    day_start::date AS day,
+                    (sd.date_time AT TIME ZONE 'UTC')::date AS day,
                     s.sensor_id,
                     s.name AS sensor_name,
                     EXTRACT(HOUR FROM sd.date_time AT TIME ZONE 'UTC') AS hour,
                     AVG(sd.value) AS avg_value
-                FROM date_series ds
-                CROSS JOIN mes_sensors s
-                LEFT JOIN mes_sensor_data sd
+                FROM mes_sensors s
+                INNER JOIN mes_sensor_data sd 
                     ON sd.sensor_id = s.sensor_id
-                    AND sd.date_time >= ds.day_start
-                    AND sd.date_time < ds.day_start + interval '1 day'
                 WHERE s.sensor_id = $1
-                GROUP BY day, s.sensor_id, s.name, hour
+                    AND sd.date_time >= $2::timestamptz
+                    AND sd.date_time < $3::timestamptz
+                GROUP BY 
+                    (sd.date_time AT TIME ZONE 'UTC')::date,
+                    s.sensor_id, 
+                    s.name, 
+                    EXTRACT(HOUR FROM sd.date_time AT TIME ZONE 'UTC')
                 ORDER BY day DESC, hour ASC
                 ${limitClause};
             `, values);
+            
             // Transformar resultados en el formato esperado
             const groupedData = resultado.rows.map(row => {
                 const dayStr = new Date(row.day).toISOString().split('T')[0]; // YYYY-MM-DD
