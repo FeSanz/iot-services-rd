@@ -89,16 +89,13 @@ router.get('/alertsByOrganizations/pendings', authenticateToken, async (req, res
                 m.organization_id = ANY($1)
                 AND a.status != 'completed'
         `;
-
         const params = [orgIds]; // Parametro 1
-
         if (start_date) {
             query += ` AND a.start_date >= $2 `;
             params.push(start_date); // Parametro 2
         }
 
         query += ` ORDER BY a.alert_id DESC;`;
-
         const resultado = await pool.query(query, params);
 
         res.json({
@@ -192,6 +189,7 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
             // Sin fechas → solo últimas 5
             sqlQuery += ` ORDER BY a.repair_time DESC LIMIT 5`;
         }
+console.log(sqlQuery, params);
 
         const resultado = await pool.query(sqlQuery, params);
 

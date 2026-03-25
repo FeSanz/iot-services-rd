@@ -259,6 +259,25 @@ CREATE TABLE MES_SENSOR_DATA (
     CONSTRAINT FK_SENSOR_DATA_SENSOR FOREIGN KEY (SENSOR_ID) REFERENCES MES_SENSORS(SENSOR_ID)
 );
 
+
+-- Tabla de eventos 
+CREATE TABLE mes_events (
+  event_id SERIAL PRIMARY KEY,
+  sensor_id INTEGER NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  conditions JSONB NOT NULL,
+  actions JSONB NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  created_by INTEGER,
+  
+  FOREIGN KEY (sensor_id) REFERENCES mes_sensors(sensor_id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL
+);
+
+
 -- Crear índices para mejorar el rendimiento
 CREATE INDEX idx_settings_company ON MES_SETTINGS(COMPANY_ID);
 CREATE INDEX idx_organizations_company ON MES_ORGANIZATIONS(COMPANY_ID);
