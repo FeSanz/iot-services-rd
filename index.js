@@ -51,6 +51,8 @@ app.use('/api', require('./services/fusion/work_execution'));
 app.use('/api', require('./services/fusion/dispatch_orders') );
 app.use('/api', require('./services/fusion/codes.js') );
 
+app.use('/api', require('./services/mqtt/mqtt_routes'));
+
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
@@ -58,7 +60,19 @@ app.get('/', (req, res) => {
 });
 
 const server = app.listen(port, () => {
-    console.log(`Servidor corriendo en puerto ${port}`);
+    console.log(`[NODE] Servidor inicializado`);
 });
 
 initWebSocket(server);
+
+const { initMQTT } = require('./services/mqtt/mqtt_client');
+
+initMQTT().then((mqttClient) => {
+    if (mqttClient) {
+        console.log('[MQTT] Servicio inicializado');
+    } else {
+        console.error('[MQTT] No se pudo inicializar');
+    }
+}).catch((err) => {
+    console.error('[MQTT] Error:', err.message);
+});

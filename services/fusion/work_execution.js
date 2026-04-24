@@ -5,10 +5,24 @@ const { notifyWorkOrdersAdvance } = require("../websocket/websocket");
 const authenticateToken = require("../../middleware/authenticateToken");
 const {selectByParamsFromDB} = require("../../models/sql-execute");
 
+const { woCompletedHandler } = require('../handlers/work_execution_handler');
+
 router.put('/woCompleted/:organizationId', async (req, res) => {
     try {
         const { organizationId } = req.params;
-        const { WorkOrderNumber, ExecutionDate, Number, Ready, Scrap, Reject, Tare, Container } = req.body;
+
+        //**************************Llamar al handler compartido
+        const result = await woCompletedHandler(organizationId, req.body);
+
+        // Mapear respuesta del handler al formato HTTP
+        res.status(result.status).json({
+            errorsExistFlag: !result.success,
+            message: result.message,
+            totalResults: result.data ? 1 : 0,
+            items: result.data
+        });
+
+        /*const { WorkOrderNumber, ExecutionDate, Number, Ready, Scrap, Reject, Tare, Container } = req.body;
 
         // Validación
         if (!WorkOrderNumber || !ExecutionDate || !Ready || !Number) {
@@ -126,7 +140,7 @@ router.put('/woCompleted/:organizationId', async (req, res) => {
             throw err;
         } finally {
             client.release();
-        }
+        }*/
 
     } catch (error) {
         console.error('Error al actualizar:', error);

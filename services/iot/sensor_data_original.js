@@ -1,10 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../database/pool');
-const { sensorDataHandler, sensorsDataHandler } = require('../handlers/sensor_data_handler');
 
 const { notifySensorData } = require('../websocket/websocket');
-
 //obtener datos de sensores por dispositivo
 router.get('/sensorData/:sensorID', async (req, res) => {
     const { sensorID } = req.params;
@@ -213,7 +211,7 @@ router.get('/sensorsDataHM', async (req, res) => {
                 ORDER BY day DESC, hour ASC
                 ${limitClause};
             `, values);
-            
+
             // Transformar resultados en el formato esperado
             const groupedData = resultado.rows.map(row => {
                 const dayStr = new Date(row.day).toISOString().split('T')[0]; // YYYY-MM-DD
@@ -248,43 +246,150 @@ router.get('/sensorsDataHM', async (req, res) => {
     }
 });
 
-// ===============================================
-// POST /sensorsData  Refactorizado
-// ===============================================
+//Insertar datos de sensores por arreglo
 router.post('/sensorsData', async (req, res) => {
-    try {
-        const result = await sensorsDataHandler(req.body);
+    const { token, items } = req.body;
 
-        res.status(result.status).json({
-            errorsExistFlag: !result.success,
-            message: result.message,
-            items: result.items || null
+    if (!token || !items || !Array.isArray(items)) {
+        return res.status(400).json({
+            errorsExistFlag: false,
+            message: 'Faltan parámetros o estructura incorrecta'
+        });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const results = [];
+
+        // Obtener la máquina por token
+        const machineResult = await client.query(
+            `SELECT machine_id FROM mes_machines WHERE token = $1 LIMIT 1`,
+            [token]
+        );
+
+        if (machineResult.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({
+                errorsExistFlag: false,
+                message: 'Token no válido: máquina no encontrada'
+            });
+        }
+
+        const machine_id = machineResult.rows[0].machine_id;
+
+        for (const { sensor_var, value } of items) {
+            let sensor_id;
+
+            // 1. Buscar el sensor por var y machine_id
+            const sensorQuery = await client.query(`
+                SELECT sensor_id FROM mes_sensors
+                WHERE machine_id = $1 AND var = $2
+                LIMIT 1
+            `, [machine_id, sensor_var]);
+
+            if (sensorQuery.rowCount === 0) {
+                // 2. Sensor no existe, lo creamos
+                const insertSensorResult = await client.query(`
+                    INSERT INTO mes_sensors (var, name, icon, created_by, machine_id)
+                    VALUES ($1, $2, $3, $4, $5)
+                    RETURNING sensor_id
+                `, [
+                    sensor_var,
+                    sensor_var.toUpperCase(),
+                    'help-outline',
+                    'Auto',
+                    machine_id
+                ]);
+                sensor_id = insertSensorResult.rows[0].sensor_id;
+                results.push({ sensor_var, status: 'Sensor creado automáticamente' });
+            } else {
+                sensor_id = sensorQuery.rows[0].sensor_id;
+            }
+
+            // 3. Insertar el dato del sensor
+            const insertResult = await client.query(`
+                INSERT INTO mes_sensor_data (sensor_id, value)
+                VALUES ($1, $2)
+                RETURNING value, date_time
+            `, [sensor_id, value]);
+
+            const payload = {
+                sensorId: sensor_id,
+                sensor_var,
+                value: insertResult.rows[0].value,
+                time: insertResult.rows[0].date_time
+            };
+
+            // 4. Notificar a los usuarios suscritos a este sensor
+            notifySensorData(sensor_id, { data: payload });
+
+            results.push({ sensor_var, status: 'OK' });
+        }
+
+        await client.query('COMMIT');
+
+        res.status(200).json({
+            errorsExistFlag: false,
+            message: 'OK',
+            items: results
         });
 
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error al guardar datos:', error);
         res.status(500).json({
             errorsExistFlag: true,
             message: 'Error al guardar en base de datos'
         });
+    } finally {
+        client.release();
     }
 });
 
-// ===============================================
-// POST /sensorData  Refactorizado
-// ===============================================
+//agregar nuevo dato de sensor
 router.post('/sensorData', async (req, res) => {
+    const { token, sensor_var, value, comment } = req.body;
     try {
-        const result = await sensorDataHandler(req.body);
+        // 1️⃣ Obtener sensor_id a partir de token + sensor_var
+        const sensorResult = await pool.query(
+            `SELECT s.sensor_id
+             FROM mes_sensors s
+             JOIN mes_machines m ON s.machine_id = m.machine_id
+             WHERE m.token = $1 AND s.var = $2
+             LIMIT 1`,
+            [token, sensor_var]
+        );
 
-        if (!result.success) {
-            return res.status(result.status).json({
-                errorsExistFlag: true,
-                message: result.message
+        if (sensorResult.rows.length === 0) {
+            return res.status(404).json({
+                message: 'Sensor no encontrado para ese token y variable'
             });
         }
 
-        res.status(result.status).json({
+        const sensorId = sensorResult.rows[0].sensor_id;
+
+        const result = await pool.query(
+            `INSERT INTO mes_sensor_data (sensor_id, value, comment)
+             VALUES ($1, $2, $3)
+             RETURNING *`,
+            [sensorId, value, comment || '']
+        );
+
+        const payload = {
+            sensorId,
+            sensor_var,
+            value: result.rows[0].value,
+            time: result.rows[0].date_time
+        };
+
+        notifySensorData(sensorId, {
+            data: payload
+        });
+
+        res.status(201).json({
             errorsExistFlag: false
         });
 
