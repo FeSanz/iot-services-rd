@@ -110,7 +110,60 @@ router.post('/dashboards', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Error al crear dashboard' });
     }
 });
+// Duplicar un dashboard existente
+router.post('/dashboardsDuplicate/:id', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { created_by, updated_by } = req.body; // Asumimos que envías quién realiza la copia
 
+    try {
+        const result = await pool.query(
+            `INSERT INTO mes_dashboards (
+                dashboard_group_id, 
+                index, 
+                col_size, 
+                date_range, 
+                name, 
+                color, 
+                parameters, 
+                created_date, 
+                created_by, 
+                updated_date, 
+                updated_by, 
+                border_flag
+            )
+            SELECT 
+                dashboard_group_id, 
+                index, 
+                col_size, 
+                date_range, 
+                CONCAT(name, ' (Copia)'), 
+                color, 
+                parameters, 
+                CURRENT_TIMESTAMP, 
+                $1, 
+                CURRENT_TIMESTAMP, 
+                $2, 
+                border_flag
+            FROM mes_dashboards 
+            WHERE dashboard_id = $3
+            RETURNING *`,
+            [created_by, updated_by, id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ existError: true, message: 'Dashboard no encontrado' });
+        }
+
+        res.status(201).json({
+            existError: false,
+            message: 'Dashboard duplicado con éxito',
+            items: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error al duplicar dashboard:', error);
+        res.status(500).json({ existError: true, message: 'Error al duplicar el dashboard' });
+    }
+});
 //Eliminar dashboards
 router.delete('/dashboards/:id', authenticateToken, async (req, res) => {
     const dashboardId = req.params.id;
