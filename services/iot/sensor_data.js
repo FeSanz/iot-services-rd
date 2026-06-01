@@ -165,86 +165,65 @@ router.get('/sensorsData', async (req, res) => {
 });
 
 router.get('/sensorsDataHM', async (req, res) => {
-    const { sensors, start, end, limit } = req.query;
+    const { sensors, start, end, limit, aggregation } = req.query;
+
     if (!sensors) {
-        return res.status(400).json({
-            errorsExistFlag: false,
-            message: 'Debe enviar el parámetro sensors con una lista de IDs'
-        });
+        return res.status(400).json({ errorsExistFlag: false, message: 'Debe enviar sensors' });
     }
 
+    // Lista blanca con las 6 funciones solicitadas
+    const allowedAggregations = {
+        'avg': 'AVG(sd.value)',
+        'max': 'MAX(sd.value)',
+        'min': 'MIN(sd.value)',
+        'median': 'PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY sd.value)',
+        'sum': 'SUM(sd.value)',
+        'count': 'COUNT(sd.value)'
+    };
+
+    const aggFunction = allowedAggregations[aggregation?.toLowerCase()] || allowedAggregations['avg'];
+
     const sensorIDs = sensors.split(',').map(id => id.trim()).filter(id => id !== '');
-    if (sensorIDs.length === 0) {
-        return res.status(400).json({
-            errorsExistFlag: false,
-            message: 'Debe enviar al menos un sensorID válido'
-        });
-    }
 
     try {
         const sensorsData = [];
-
         for (const sensorID of sensorIDs) {
             const values = [sensorID, start, end];
-            let limitClause = '';
+            const limitClause = limit ? `LIMIT $4` : '';
+            if (limit) values.push(limit);
 
-            if (limit) {
-                values.push(limit);
-                limitClause = `LIMIT $4`;
-            }
-            const resultado = await pool.query(`
+            const query = `
                 SELECT
                     (sd.date_time AT TIME ZONE 'UTC')::date AS day,
                     s.sensor_id,
                     s.name AS sensor_name,
                     EXTRACT(HOUR FROM sd.date_time AT TIME ZONE 'UTC') AS hour,
-                    AVG(sd.value) AS avg_value
+                    ${aggFunction} AS calculated_value
                 FROM mes_sensors s
-                INNER JOIN mes_sensor_data sd 
-                    ON sd.sensor_id = s.sensor_id
+                INNER JOIN mes_sensor_data sd ON sd.sensor_id = s.sensor_id
                 WHERE s.sensor_id = $1
                     AND sd.date_time >= $2::timestamptz
                     AND sd.date_time < $3::timestamptz
-                GROUP BY 
-                    (sd.date_time AT TIME ZONE 'UTC')::date,
-                    s.sensor_id, 
-                    s.name, 
-                    EXTRACT(HOUR FROM sd.date_time AT TIME ZONE 'UTC')
+                GROUP BY 1, 2, 3, 4
                 ORDER BY day DESC, hour ASC
                 ${limitClause};
-            `, values);
-            
-            // Transformar resultados en el formato esperado
-            const groupedData = resultado.rows.map(row => {
-                const dayStr = new Date(row.day).toISOString().split('T')[0]; // YYYY-MM-DD
-                const hour = row.hour !== null ? row.hour : 0;
+            `;
 
-                return {
-                    value: row.avg_value !== null ? parseFloat(row.avg_value) : 0,
-                    time: `${dayStr}T${String(hour).padStart(2, '0')}:00:00Z`
-                };
-            });
+            const resultado = await pool.query(query, values);
 
             sensorsData.push({
                 sensor_id: sensorID,
                 sensor_name: resultado.rows[0]?.sensor_name || null,
-                data: groupedData
+                data: resultado.rows.map(row => ({
+                    value: row.calculated_value !== null ? parseFloat(row.calculated_value) : 0,
+                    time: `${new Date(row.day).toISOString().split('T')[0]}T${String(row.hour || 0).padStart(2, '0')}:00:00Z`
+                }))
             });
         }
-
-        res.status(200).json({
-            errorsExistFlag: false,
-            message: "OK",
-            totalSensors: sensorsData.length,
-            items: sensorsData
-        });
-
+        res.status(200).json({ errorsExistFlag: false, message: "OK", items: sensorsData });
     } catch (error) {
-        console.error('Error al obtener datos:', error);
-        res.status(500).json({
-            errorsExistFlag: false,
-            message: 'Error al consultar la base de datos'
-        });
+        console.error('Error:', error);
+        res.status(500).json({ errorsExistFlag: false, message: 'Error en la base de datos' });
     }
 });
 
