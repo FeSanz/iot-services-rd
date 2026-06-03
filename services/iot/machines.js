@@ -232,6 +232,7 @@ router.get('/machinesAndSensorsByOrganizations', authenticateToken, async (req, 
                 m.token AS token,
                 m.code AS machine_code,
                 m.organization_id,
+                m.is_active,
                 COALESCE(
                     json_agg(
                         json_build_object(
@@ -382,6 +383,47 @@ router.put('/machines/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ errorsExistFlag: true, message: 'Error al actualizar máquina y sensores' });
     } finally {
         client.release();
+    }
+});
+// Actualizar solo el estado de la máquina
+router.put('/updateMachineStatus/:id', authenticateToken, async (req, res) => {
+    const machineId = req.params.id;
+    const { is_active } = req.body;
+
+    // Validación básica de entrada
+    if (is_active === undefined || is_active === null) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'El campo "status" es requerido'
+        });
+    }
+
+    try {
+        const updateMachine = await pool.query(
+            `UPDATE mes_machines
+             SET is_active = $1
+             WHERE machine_id = $2
+             RETURNING machine_id`,
+            [is_active, machineId]
+        );
+
+        if (updateMachine.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'Máquina no encontrada'
+            });
+        }
+
+        res.json({
+            errorsExistFlag: false,
+            message: 'OK'
+        });
+    } catch (err) {
+        console.error('Error al actualizar status de la máquina:', err);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al actualizar el estado en la base de datos'
+        });
     }
 });
 //Eliminar máquina
