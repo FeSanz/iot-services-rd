@@ -329,7 +329,7 @@ router.post('/machines', authenticateToken, async (req, res) => {
 //actualizar máquina
 router.put('/machines/:id', authenticateToken, async (req, res) => {
     const machineId = req.params.id;
-    const { machine_name, sensors } = req.body;
+    const { machine_name, machine_code, sensors } = req.body;
 
     const client = await pool.connect();
     try {
@@ -338,10 +338,10 @@ router.put('/machines/:id', authenticateToken, async (req, res) => {
         // 1. Actualizar solo el nombre de la máquina
         const updateMachine = await client.query(
             `UPDATE mes_machines
-             SET name = $1
-             WHERE machine_id = $2
+             SET name = $1, code = $2
+             WHERE machine_id = $3
              RETURNING *`,
-            [machine_name, machineId]
+            [machine_name, machine_code, machineId]
         );
 
         if (updateMachine.rows.length === 0) {
@@ -388,10 +388,10 @@ router.put('/machines/:id', authenticateToken, async (req, res) => {
 router.delete('/machines/:id', authenticateToken, async (req, res) => {
     const machineId = req.params.id; // Cambié el nombre de la variable
     const client = await pool.connect();
-    
+
     try {
         await client.query('BEGIN');
-        
+
         // 1. Primero eliminar datos de sensores
         await client.query(`
             DELETE FROM mes_sensor_data 
@@ -399,12 +399,12 @@ router.delete('/machines/:id', authenticateToken, async (req, res) => {
                 SELECT sensor_id FROM mes_sensors WHERE machine_id = $1
             )
         `, [machineId]);
-        
+
         // 2. Luego eliminar los sensores
         await client.query(`
             DELETE FROM mes_sensors WHERE machine_id = $1
         `, [machineId]);
-        
+
         // 3. Finalmente eliminar la máquina
         const result = await client.query(
             'DELETE FROM mes_machines WHERE machine_id = $1 RETURNING *',
@@ -420,7 +420,7 @@ router.delete('/machines/:id', authenticateToken, async (req, res) => {
         }
 
         await client.query('COMMIT');
-        
+
         res.json({
             errorsExistFlag: false,
             message: 'OK',
@@ -429,9 +429,9 @@ router.delete('/machines/:id', authenticateToken, async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error al eliminar máquina:', error);
-        res.status(500).json({ 
-            errorsExistFlag: true, 
-            message: 'Error al eliminar máquina' 
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al eliminar máquina'
         });
     } finally {
         client.release();
