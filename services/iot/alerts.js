@@ -189,7 +189,7 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
             // Sin fechas → solo últimas 5
             sqlQuery += ` ORDER BY a.repair_time DESC LIMIT 5`;
         }
-console.log(sqlQuery, params);
+        console.log(sqlQuery, params);
 
         const resultado = await pool.query(sqlQuery, params);
 
@@ -303,6 +303,61 @@ router.get('/ping', (req, res) => {
     return res.status(200).json({
         status: "ok",
     });
+});
+// GET: Verificar si una máquina tiene fallas activas
+router.get('/alerts/check-active/:machineToken', async (req, res) => {
+    const { machineToken } = req.params;
+
+    if (!machineToken) {
+        return res.status(400).json({
+            errorsExistFlag: true,
+            message: 'El token de la máquina (MachineId) es requerido'
+        });
+    }
+
+    try {
+        // 1. Buscar la máquina por token
+        const machineResult = await pool.query(
+            'SELECT machine_id, name FROM mes_machines WHERE token = $1',
+            [machineToken]
+        );
+
+        if (machineResult.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'No existe ninguna máquina con el token proporcionado'
+            });
+        }
+
+        const { machine_id: machineId } = machineResult.rows[0];
+
+        // 2. Consultar si hay alertas en estado activo
+        const activeAlert = await pool.query(`
+            SELECT alert_id, status, start_date 
+            FROM mes_alerts 
+            WHERE machine_id = $1 
+            AND status IN ('open', 'assigned', 'attending')
+            ORDER BY start_date DESC 
+            LIMIT 1;
+        `, [machineId]);
+
+        const hasActiveAlert = activeAlert.rows.length > 0;
+
+        // 3. Respuesta estructurada
+        return res.status(200).json({
+            errorsExistFlag: false,
+            message: hasActiveAlert ? 'Falla activa encontrada' : 'No hay fallas activas',
+            isActive: hasActiveAlert,
+            alertDetails: hasActiveAlert ? activeAlert.rows[0] : null
+        });
+
+    } catch (error) {
+        console.error('Error al verificar estado de máquina:', error);
+        res.status(500).json({
+            errorsExistFlag: true,
+            message: 'Error al consultar el estado de la máquina en la base de datos'
+        });
+    }
 });
 //New Alert
 router.post('/alerts', async (req, res) => {
