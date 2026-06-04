@@ -189,7 +189,6 @@ router.get('/alertsByOrganizations/finaliced', authenticateToken, async (req, re
             // Sin fechas → solo últimas 5
             sqlQuery += ` ORDER BY a.repair_time DESC LIMIT 5`;
         }
-        console.log(sqlQuery, params);
 
         const resultado = await pool.query(sqlQuery, params);
 
@@ -420,6 +419,14 @@ router.post('/alerts', async (req, res) => {
             [orgId]
         );
 
+        if (orgResult.rows.length === 0) {
+            return res.status(404).json({
+                errorsExistFlag: true,
+                message: 'No se encontró la organización o no tiene compañía asociada'
+            });
+        }
+        const { company_id: companyId } = orgResult.rows[0];
+
         // 🔍 Verificar si existen alertas activas para la máquina
         const activeAlertsResult = await pool.query(
             `
@@ -431,22 +438,53 @@ router.post('/alerts', async (req, res) => {
             `,
             [machineId]
         );
-        if (activeAlertsResult.rows.length > 0) {
-            return res.status(409).json({
-                errorsExistFlag: true,
-                message: `Ya existe(n) ${activeAlertsResult.rows.length} falla(s) activa(s) para la máquina ${machineName}`,
-                alertId: activeAlertsResult.rows[0].alert_id
-            });
-        }
-        // Insertar alerta
 
+        // ✅ DOWNTIME - FALLA DETECTADA
         if (Status === 0) {
+
+            if (activeAlertsResult.rows.length > 0) {
+                return res.status(409).json({
+                    errorsExistFlag: true,
+                    message: `Ya existe(n) ${activeAlertsResult.rows.length} falla(s) activa(s) para la máquina ${machineName}`,
+                    alertId: activeAlertsResult.rows[0].alert_id
+                });
+            }
+
+            // Validar que la falla existe
+            const failureCheck = await pool.query(
+                'SELECT failure_id FROM mes_failures WHERE failure_id = $1',
+                [FailureId]
+            );
+
+            if (failureCheck.rows.length === 0) {
+                return res.status(404).json({
+                    errorsExistFlag: true,
+                    message: `La falla con ID ${FailureId} no existe`
+                });
+            }
+
+            // ✅ Validar configuración de ALERTS_FLAG
+            const alertsFlagResult = await pool.query(
+                `SELECT value FROM mes_settings 
+                 WHERE company_id = $1 AND name = 'ALERTS_FLAG'`,
+                [companyId]
+            );
+
+            if (alertsFlagResult.rows.length == 0 || alertsFlagResult.rows[0].value != 'true') {
+                return res.status(200).json({
+                    errorsExistFlag: false,
+                    message: 'Ok'
+                });
+            }
+
+            // Insertar alerta
             const insertResult = await pool.query(`
                 INSERT INTO mes_alerts (machine_id, failure_id, start_date, status)
                 VALUES ($1, $2, $3, 'open') RETURNING *;
             `, [machineId, FailureId, StartDate]);
 
             const insertedAlert = insertResult.rows[0];
+
             // Obtener datos completos
             const dataResult = await pool.query(`
                 SELECT a.alert_id,
@@ -464,58 +502,19 @@ router.post('/alerts', async (req, res) => {
                 LEFT JOIN mes_failures f ON a.failure_id = f.failure_id
                 WHERE a.alert_id = $1;
             `, [insertedAlert.alert_id]);
-            // Actualizar estado de máquina
-            await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' WHERE machine_id = $1`, [machineId]);
 
             const payload = dataResult.rows[0];
 
-            // ✅ Notificación WebSocket (siempre se envía)
+            // Actualizar estado de máquina
+            await pool.query(`UPDATE mes_machines SET "status" = 'Downtime' WHERE machine_id = $1`, [machineId]);
+
+            // ✅ Notificación WebSocket
             try {
                 notifyAlert(payload.organization_id, payload, 'new');
             } catch (err) {
                 console.error('Error al notificar vía WebSocket:', err);
             }
-        }
 
-        if (orgResult.rows.length === 0) {
-            return res.status(404).json({
-                errorsExistFlag: true,
-                message: 'No se encontró la organización o no tiene compañía asociada'
-            });
-        }
-
-        const { company_id: companyId } = orgResult.rows[0];
-
-        // ✅ Validar configuración de ALERTS_FLAG
-        const alertsFlagResult = await pool.query(
-            `SELECT value FROM mes_settings 
-             WHERE company_id = $1 AND name = 'ALERTS_FLAG'`,
-            [companyId]
-        );
-
-        if (alertsFlagResult.rows.length == 0 || alertsFlagResult.rows[0].value != 'true') {
-            return res.status(200).json({
-                errorsExistFlag: false,
-                message: 'Ok'
-            });
-        }
-
-        // ✅ DOWNTIME - FALLA DETECTADA
-        if (Status === 0) {
-            // Validar que la falla existe
-            const failureCheck = await pool.query(
-                'SELECT failure_id FROM mes_failures WHERE failure_id = $1',
-                [FailureId]
-            );
-
-            if (failureCheck.rows.length === 0) {
-                return res.status(404).json({
-                    errorsExistFlag: true,
-                    message: `La falla con ID ${FailureId} no existe`
-                });
-            }
-
-            // Validar que no haya alertas abiertas
             /*const duplicateCheck = await pool.query(`
                 SELECT alert_id
                 FROM mes_alerts
@@ -529,7 +528,6 @@ router.post('/alerts', async (req, res) => {
                     message: `Ya existe(n) ${duplicateCheck.rows.length} falla(s) activas para la máquina ${machineName}`,
                 });
             }*/
-
 
             // ✅ Validar PUSH_FLAG para notificaciones push
             const pushFlagResult = await pool.query(
@@ -558,7 +556,7 @@ router.post('/alerts', async (req, res) => {
                 [companyId]
             );
 
-            if (emailFlagResult.rows.length > 0 && emailFlagResult.rows[0].value == 'true') {
+            /*if (emailFlagResult.rows.length > 0 && emailFlagResult.rows[0].value == 'true') {
                 // TODO: Integración futura - Enviar notificación por correo
                 try {
                     await sendEmailNotification(
@@ -570,7 +568,7 @@ router.post('/alerts', async (req, res) => {
                 } catch (err) {
                     console.error('Error al enviar notificación por correo:', err);
                 }
-            }
+            }*/
 
             // Respuesta
             return res.json({
@@ -583,12 +581,7 @@ router.post('/alerts', async (req, res) => {
 
         // ✅ RUNTIME - MÁQUINA ACTIVA
         else if (Status === 1) {
-            const alertsOpen = await pool.query(`
-                SELECT alert_id FROM mes_alerts
-                WHERE machine_id = $1 AND status IN ('open', 'assigned', 'attending');
-            `, [machineId]);
-
-            if (alertsOpen.rows.length > 0) {
+            if (activeAlertsResult.rows.length > 0) {
                 return res.status(409).json({
                     errorsExistFlag: true,
                     message: `La falla aún no ha sido atendida para cambiar el estado`
