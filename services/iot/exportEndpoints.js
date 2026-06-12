@@ -57,14 +57,37 @@ router.get('/sensorsData/export', authenticateToken, async (req, res) => {
             metaData.forEach(item => {
                 const row = worksheet.addRow(item);
                 row.getCell(1).font = { bold: true }; // Negrita para la etiqueta
+
+                // Celda 1 (Columna A): Etiqueta, alineada a la IZQUIERDA
+                row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
+                row.getCell(1).font = { bold: true };
+
+                // Celda 2 (Columna B): Valor, alineado a la DERECHA
+                row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
             });
 
             worksheet.addRow([]); // Espaciado
 
-            // 2. TABLA DE REGISTROS
-            const headerRow = worksheet.addRow(['ID Dato', 'Fecha', 'Valor', 'Comentario']);
-            headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2C3E50' } };
+            // 1. Identificamos los títulos de tus columnas
+            const headers = ['ID Dato', 'Fecha', 'Valor', 'Comentario'];
+
+            // 2. Agregamos la fila
+            const headerRow = worksheet.addRow(headers);
+
+            // 3. Aplicamos estilo solo a las celdas que contienen datos (de la 1 a la 4)
+            headerRow.eachCell((cell, colNumber) => {
+                // Si el número de columna es 5 o mayor, no hacemos nada
+                if (colNumber <= headers.length) {
+                    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                    cell.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: 'FF2C3E50' }
+                    };
+                    // Opcional: centramos el título
+                    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                }
+            });
 
             // 3. INSERTAR DATOS Y ALINEACIÓN
             data.forEach(row => {
