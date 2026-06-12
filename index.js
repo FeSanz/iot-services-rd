@@ -53,6 +53,8 @@ app.use('/api', require('./services/fusion/codes.js') );
 
 app.use('/api', require('./services/mqtt/mqtt_routes'));
 
+app.use('/api', require('./services/iot/exportEndpoints'));
+
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {

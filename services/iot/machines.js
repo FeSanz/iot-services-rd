@@ -284,6 +284,152 @@ router.get('/machinesAndSensorsByOrganizations', authenticateToken, async (req, 
         });
     }
 });
+router.get('/machinesAndSensorsByOrganization', authenticateToken, async (req, res) => {
+    // Recibimos fechas de Ionic (formato ISO 'YYYY-MM-DDTHH:mm:ss')
+    const { organization_id, start_date, end_date } = req.query;
+
+    try {
+        const resultado = await pool.query(
+            `
+            SELECT
+                m.machine_id,
+                m.name AS machine_name,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'sensor_id', s.sensor_id,
+                            'sensor_name', s.name,
+                            'last_value', last_val.value,
+                            'last_date_time', last_val.date_time,
+                            'values', COALESCE(val_range.data_points, '[]'::json)
+                        )
+                    ) FILTER (WHERE s.sensor_id IS NOT NULL),
+                    '[]'::json
+                ) AS sensors
+            FROM mes_machines m
+            LEFT JOIN mes_sensors s ON s.machine_id = m.machine_id
+            -- 1. Obtener el último valor histórico
+            LEFT JOIN LATERAL (
+                SELECT value, date_time
+                FROM mes_sensor_data
+                WHERE sensor_id = s.sensor_id
+                ORDER BY date_time DESC LIMIT 1
+            ) last_val ON TRUE
+            -- 2. Obtener los últimos 15 datos en el periodo solicitado
+            LEFT JOIN LATERAL (
+                SELECT json_agg(sub.point) AS data_points
+                FROM (
+                    SELECT json_build_object('date', sd.date_time, 'value', sd.value) AS point
+                    FROM mes_sensor_data sd
+                    WHERE sd.sensor_id = s.sensor_id
+                    AND sd.date_time BETWEEN $2::timestamp AND $3::timestamp
+                    ORDER BY sd.date_time DESC  -- Ordenamos para tomar los más recientes
+                    LIMIT 15                    -- Limitamos a los últimos 15
+                ) sub
+            ) val_range ON TRUE
+            WHERE m.organization_id = $1
+            AND m.token IS NOT NULL AND m.token <> ''
+            GROUP BY m.machine_id, m.name
+            ORDER BY m.machine_id;
+            `,
+            [organization_id, start_date, end_date]
+        );
+
+        res.json({ items: resultado.rows });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+router.get('/machinesAndSensorsLastValues', authenticateToken, async (req, res) => {
+    // Recibimos organization_id y el límite deseado (por defecto 15)
+    const { organization_id, limit } = req.query;
+    const dataLimit = parseInt(String(limit)) || 15;
+    try {
+        const resultado = await pool.query(
+            `
+            SELECT
+                m.machine_id,
+                m.name AS machine_name,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'sensor_id', s.sensor_id,
+                            'sensor_name', s.name,
+                            'last_value', last_val.value,
+                            'last_date_time', last_val.date_time,
+                            'values', COALESCE(val_range.data_points, '[]'::json)
+                        )
+                    ) FILTER (WHERE s.sensor_id IS NOT NULL),
+                    '[]'::json
+                ) AS sensors
+            FROM mes_machines m
+            LEFT JOIN mes_sensors s ON s.machine_id = m.machine_id
+            -- 1. Obtener el último valor histórico (para el valor actual)
+            LEFT JOIN LATERAL (
+                SELECT value, date_time
+                FROM mes_sensor_data
+                WHERE sensor_id = s.sensor_id
+                ORDER BY date_time DESC LIMIT 1
+            ) last_val ON TRUE
+            -- 2. Obtener los últimos 15 datos SIN filtrar por fecha
+            LEFT JOIN LATERAL (
+                SELECT json_agg(sub.point) AS data_points
+                FROM (
+                    SELECT json_build_object('date', sd.date_time, 'value', sd.value) AS point
+                    FROM mes_sensor_data sd
+                    WHERE sd.sensor_id = s.sensor_id
+                    ORDER BY sd.date_time DESC
+                    LIMIT $2
+                ) sub
+            ) val_range ON TRUE
+            WHERE m.organization_id = $1
+            AND m.token IS NOT NULL AND m.token <> ''
+            GROUP BY m.machine_id, m.name
+            ORDER BY m.machine_id;
+            `,
+            [organization_id, dataLimit]
+        );
+        res.json({ items: resultado.rows });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+router.get('/sensorHistory', authenticateToken, async (req, res) => {
+    const { sensor_id, start_date, end_date } = req.query;
+
+    try {
+        // 1. Obtener info del sensor y sensores hermanos (de la misma máquina)
+        const sensorInfo = await pool.query(`
+            SELECT s.*, m.name as machine_name
+            FROM mes_sensors s
+            JOIN mes_machines m ON s.machine_id = m.machine_id
+            WHERE s.sensor_id = $1
+        `, [sensor_id]);
+
+        const siblingSensors = await pool.query(`
+            SELECT sensor_id, name 
+            FROM mes_sensors 
+            WHERE machine_id = (SELECT machine_id FROM mes_sensors WHERE sensor_id = $1)
+        `, [sensor_id]);
+
+        // 2. Obtener el histórico de datos
+        const history = await pool.query(`
+            SELECT sensor_data_id, value, date_time, comment
+            FROM mes_sensor_data 
+            WHERE sensor_id = $1 
+            AND date_time BETWEEN $2 AND $3
+            ORDER BY date_time DESC
+        `, [sensor_id, start_date, end_date]);
+
+        res.json({
+            sensor: sensorInfo.rows[0],
+            siblings: siblingSensors.rows,
+            history: history.rows
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 //obtener una máquina
 router.get('/machine/:machId', authenticateToken, async (req, res) => {
     const { machId } = req.params;

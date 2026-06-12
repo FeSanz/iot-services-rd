@@ -133,7 +133,7 @@ router.get('/sensorsData', async (req, res) => {
                 limitClause = `LIMIT $${paramIndex++}`;
             }
             const resultado = await pool.query(`
-                SELECT s.name AS sensor_name, sd.value, sd.date_time 
+                SELECT sd.sensor_data_id, s.name AS sensor_name, sd.value, sd.date_time, sd.comment
                 FROM mes_sensor_data sd 
                 JOIN mes_sensors s ON sd.sensor_id = s.sensor_id 
                 ${whereClause} 
@@ -143,7 +143,9 @@ router.get('/sensorsData', async (req, res) => {
                 sensor_id: sensorID,
                 sensor_name: resultado.rows[0]?.sensor_name || null,
                 data: resultado.rows.map(row => ({
+                    id: row.sensor_data_id,
                     value: row.value,
+                    comment: row.comment,
                     time: row.date_time
                 }))
             });
