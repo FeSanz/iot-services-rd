@@ -240,6 +240,7 @@ router.get('/machinesAndSensorsByOrganizations', authenticateToken, async (req, 
                             'sensor_name', s.name,
                             'sensor_icon', s.icon,
                             'sensor_var', s.var,
+                            'formula', s.formula,
                             'last_value', sd.value,
                             'last_date_time', sd.date_time
                         )
@@ -498,22 +499,22 @@ router.put('/machines/:id', authenticateToken, async (req, res) => {
 
         // 2. Procesar sensores
         for (const sensor of sensors) {
-            const { sensor_id, sensor_name, sensor_icon, sensor_var } = sensor;
+            const { sensor_id, sensor_name, sensor_icon, sensor_var, formula } = sensor;
 
             if (sensor_id) {
                 // Si tiene ID, actualizar
                 await client.query(
                     `UPDATE mes_sensors
-                     SET name = $1, icon = $2, var = $3
+                     SET name = $1, icon = $2, var = $3, formula = $6
                      WHERE sensor_id = $4 AND machine_id = $5`,
-                    [sensor_name, sensor_icon, sensor_var, sensor_id, machineId]
+                    [sensor_name, sensor_icon, sensor_var, sensor_id, machineId, formula]
                 );
             } else {
                 // Si no tiene ID, insertar uno nuevo
                 await client.query(
-                    `INSERT INTO mes_sensors (machine_id, name, icon, var)
-                     VALUES ($1, $2, $3, $4)`,
-                    [machineId, sensor_name, sensor_icon, sensor_var]
+                    `INSERT INTO mes_sensors (machine_id, name, icon, var, formula)
+                     VALUES ($1, $2, $3, $4, $5)`,
+                    [machineId, sensor_name, sensor_icon, sensor_var, formula]
                 );
             }
         }

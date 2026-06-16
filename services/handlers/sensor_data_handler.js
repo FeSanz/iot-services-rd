@@ -1,5 +1,14 @@
 const pool = require('../../database/pool');
 const { notifySensorData } = require('../websocket/websocket');
+const { evaluate, create, all } = require('mathjs');
+const math = create(all);
+
+// Registramos el 'map' globalmente al iniciar el servidor
+math.import({
+    map: (x, in_min, in_max, out_min, out_max) => {
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
+}, { override: true });
 
 async function sensorDataHandler(data) {
     const { token, sensor_var, value, comment } = data;
@@ -90,32 +99,51 @@ async function sensorsDataHandler(data) {
 
         for (const { sensor_var, value } of items) {
             let sensor_id;
+            let formula = null;
 
+            // 1. Buscamos el ID y la fórmula en un solo paso
             const sensorQuery = await client.query(`
-                SELECT sensor_id FROM mes_sensors
-                WHERE machine_id = $1 AND var = $2
-                LIMIT 1`,
+        SELECT sensor_id, formula FROM mes_sensors
+        WHERE machine_id = $1 AND var = $2
+        LIMIT 1`,
                 [machine_id, sensor_var]
             );
 
             if (sensorQuery.rowCount === 0) {
                 const insertSensorResult = await client.query(`
-                    INSERT INTO mes_sensors (var, name, icon, created_by, machine_id)
-                    VALUES ($1, $2, $3, $4, $5)
-                    RETURNING sensor_id`,
+            INSERT INTO mes_sensors (var, name, icon, created_by, machine_id)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING sensor_id`,
                     [sensor_var, sensor_var.toUpperCase(), 'help-outline', 'Auto', machine_id]
                 );
                 sensor_id = insertSensorResult.rows[0].sensor_id;
                 results.push({ sensor_var, status: 'Sensor creado automáticamente' });
             } else {
                 sensor_id = sensorQuery.rows[0].sensor_id;
+                formula = sensorQuery.rows[0].formula;
             }
 
+            // 2. Aplicamos la fórmula si existe
+            let valorFinal = value;
+            if (formula && formula.trim() !== '') {
+                try {
+                    // Reemplazamos 'var_value' por el valor recibido
+                    // Usamos un regex global para asegurar el reemplazo
+                    const expression = formula.replace(/var_value/g, value.toString());
+                    valorFinal = math.evaluate(expression);
+                } catch (e) {
+                    console.error(`Error evaluando fórmula para sensor ${sensor_var}:`, e);
+                    // Si hay error en la fórmula, guardamos el original
+                    valorFinal = value;
+                }
+            }
+
+            // 3. Insertamos el valor calculado
             const insertResult = await client.query(`
-                INSERT INTO mes_sensor_data (sensor_id, value)
-                VALUES ($1, $2)
-                RETURNING value, date_time`,
-                [sensor_id, value]
+        INSERT INTO mes_sensor_data (sensor_id, value)
+        VALUES ($1, $2)
+        RETURNING value, date_time`,
+                [sensor_id, valorFinal]
             );
 
             const payload = {
@@ -126,7 +154,6 @@ async function sensorsDataHandler(data) {
             };
 
             notifySensorData(sensor_id, { data: payload });
-
             results.push({ sensor_var, status: 'OK' });
         }
 
