@@ -127,9 +127,9 @@ async function sensorsDataHandler(data) {
             let valorFinal = value;
             if (formula && formula.trim() !== '') {
                 try {
-                    // Reemplazamos 'var_value' por el valor recibido
+                    // Reemplazamos 'sensor_value' por el valor recibido
                     // Usamos un regex global para asegurar el reemplazo
-                    const expression = formula.replace(/var_value/g, value.toString());
+                    const expression = formula.replace(/sensor_value/g, value.toString());
                     valorFinal = math.evaluate(expression);
                 } catch (e) {
                     console.error(`Error evaluando fórmula para sensor ${sensor_var}:`, e);
