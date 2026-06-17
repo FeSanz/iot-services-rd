@@ -5,117 +5,178 @@ const ExcelJS = require('exceljs');
 // Cambiamos 'pool' por 'db' si es el nombre que prefieres usar, 
 // o simplemente usa 'pool' en la consulta.
 const db = require('../../database/pool');
-
 router.get('/sensorsData/export', authenticateToken, async (req, res) => {
     try {
-        const { type, sensor, start, end } = req.query;
+        // 1. Extraemos los nuevos parámetros opcionales de agrupación
+        const { type, sensor, start, end, period, aggregation } = req.query;
 
-        // Validar que los parámetros existan
         if (!sensor || !start || !end) {
             return res.status(400).json({ error: 'Faltan parámetros requeridos' });
         }
 
-        // 1. Consulta SQL usando 'db' (que es tu pool importado)
-        const query = `
-            SELECT 
-                sd.sensor_data_id, 
-                sd.value, 
-                sd.date_time, 
-                sd.comment,
-                s.name AS sensor_name, 
-                m.name AS machine_name, 
-                m.machine_id
-            FROM mes_sensor_data sd
-            JOIN mes_sensors s ON sd.sensor_id = s.sensor_id
-            JOIN mes_machines m ON s.machine_id = m.machine_id
-            WHERE s.sensor_id = $1 
-            AND sd.date_time BETWEEN $2 AND $3
-            ORDER BY sd.date_time DESC;
-                    `;
+        const usarAgregacion = period && period !== '';
+        let query = '';
+        let queryParams = [sensor, start, end];
 
-        // Ejecutar consulta (Asegúrate de que db.query soporte promesas o usa util.promisify)
-        const result = await db.query(query, [sensor, start, end]);
+        // 2. CONSTRUCCIÓN DE QUERY ADAPTATIVA (Clon de tu lógica principal)
+        if (usarAgregacion) {
+            const aggLower = aggregation.toLowerCase();
+            let sqlAggregation = '';
+            let sqlIdColumn = '';
+
+            // Condición de ID según la operación estadística
+            if (aggLower === 'max' || aggLower === 'min') {
+                sqlIdColumn = `(SELECT sd_sub.sensor_data_id FROM mes_sensor_data sd_sub WHERE sd_sub.sensor_id = sd.sensor_id AND sd_sub.value = ${aggLower === 'max' ? 'MAX(sd.value)' : 'MIN(sd.value)'} LIMIT 1) AS sensor_data_id`;
+            } else {
+                sqlIdColumn = 'NULL AS sensor_data_id';
+            }
+
+            // Operación matemática
+            if (aggLower === 'avg') sqlAggregation = 'AVG(sd.value)::numeric(10,2) AS value';
+            else if (aggLower === 'max') sqlAggregation = 'MAX(sd.value) AS value';
+            else if (aggLower === 'min') sqlAggregation = 'MIN(sd.value) AS value';
+            else if (aggLower === 'sum') sqlAggregation = 'SUM(sd.value) AS value';
+            else if (aggLower === 'count') sqlAggregation = 'COUNT(sd.value) AS value';
+            else if (aggLower === 'median') {
+                sqlAggregation = 'percentile_cont(0.5) WITHIN GROUP (ORDER BY sd.value) AS value';
+            }
+
+            // Tratamiento de intervalos variables para PostgreSQL
+            let timeExpressionStart = '';
+            let intervalStr = '';
+
+            switch (period) {
+                case 'minute': timeExpressionStart = "date_trunc('minute', sd.date_time)"; intervalStr = "1 minute"; break;
+                case '5_minutes': timeExpressionStart = "to_timestamp(floor(extract(epoch from sd.date_time) / 300) * 300)"; intervalStr = "5 minutes"; break;
+                case '15_minutes': timeExpressionStart = "to_timestamp(floor(extract(epoch from sd.date_time) / 900) * 900)"; intervalStr = "15 minutes"; break;
+                case '30_minutes': timeExpressionStart = "to_timestamp(floor(extract(epoch from sd.date_time) / 1800) * 1800)"; intervalStr = "30 minutes"; break;
+                case 'hour': timeExpressionStart = "date_trunc('hour', sd.date_time)"; intervalStr = "1 hour"; break;
+                case '5_hours': timeExpressionStart = "to_timestamp(floor(extract(epoch from sd.date_time) / 18000) * 18000)"; intervalStr = "5 hours"; break;
+                case 'day': timeExpressionStart = "date_trunc('day', sd.date_time)"; intervalStr = "1 day"; break;
+                default: timeExpressionStart = "date_trunc('minute', sd.date_time)"; intervalStr = "1 minute";
+            }
+
+            let timeExpressionEnd = `(${timeExpressionStart} + interval '${intervalStr}')`;
+
+            query = `
+                SELECT 
+                    ${sqlIdColumn}, 
+                    ${sqlAggregation}, 
+                    ${timeExpressionStart} AS date_time,
+                    ${timeExpressionEnd} AS date_time_end,
+                    s.name AS sensor_name, 
+                    m.name AS machine_name, 
+                    m.machine_id,
+                    'Agrupación matemática' AS comment
+                FROM mes_sensor_data sd
+                JOIN mes_sensors s ON sd.sensor_id = s.sensor_id
+                JOIN mes_machines m ON s.machine_id = m.machine_id
+                WHERE s.sensor_id = $1 AND sd.date_time BETWEEN $2 AND $3
+                GROUP BY s.name, sd.sensor_id, m.name, m.machine_id, ${timeExpressionStart}
+                ORDER BY date_time DESC;`;
+        } else {
+            // Consulta original sin cambios si el usuario quiere "Todo" (Sin lapso)
+            query = `
+                SELECT 
+                    sd.sensor_data_id, 
+                    sd.value, 
+                    sd.date_time, 
+                    NULL AS date_time_end,
+                    sd.comment,
+                    s.name AS sensor_name, 
+                    m.name AS machine_name, 
+                    m.machine_id
+                FROM mes_sensor_data sd
+                JOIN mes_sensors s ON sd.sensor_id = s.sensor_id
+                JOIN mes_machines m ON s.machine_id = m.machine_id
+                WHERE s.sensor_id = $1 AND sd.date_time BETWEEN $2 AND $3
+                ORDER BY sd.date_time DESC;`;
+        }
+
+        const result = await db.query(query, queryParams);
         const data = result.rows;
+
+        // Si la consulta no trajo registros, respondemos con código limpio
+        if (!data || data.length === 0) {
+            return res.status(404).json({ error: 'No se encontraron datos para el rango especificado' });
+        }
 
         if (type === 'excel') {
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Reporte de Sensores');
 
-            // 1. FILAS DE METADATOS (Información independiente)
-            // Agregamos filas manualmente para que se vean como un encabezado elegante
+            // Metadata superior
             worksheet.mergeCells('A1:B1');
             worksheet.getCell('A1').value = 'Reporte Detallado de Sensores';
             worksheet.getCell('A1').font = { size: 16, bold: true, color: { argb: 'FF2C3E50' } };
-            // Información del dispositivo y sensor
+
             const metaData = [
                 ['Dispositivo:', data[0].machine_name],
                 ['ID Dispositivo:', data[0].machine_id],
                 ['Sensor:', data[0].sensor_name],
-                ['Total de Registros:', data.length]
+                ['Modo de Consulta:', usarAgregacion ? `Agrupado (${aggregation.toUpperCase()} cada ${period.replace('_', ' ')})` : 'Histórico Completo'],
+                ['Total de Filas:', data.length]
             ];
 
             metaData.forEach(item => {
                 const row = worksheet.addRow(item);
-                row.getCell(1).font = { bold: true }; // Negrita para la etiqueta
-
-                // Celda 1 (Columna A): Etiqueta, alineada a la IZQUIERDA
-                row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
                 row.getCell(1).font = { bold: true };
-
-                // Celda 2 (Columna B): Valor, alineado a la DERECHA
+                row.getCell(1).alignment = { horizontal: 'left', vertical: 'middle' };
                 row.getCell(2).alignment = { horizontal: 'right', vertical: 'middle' };
             });
 
             worksheet.addRow([]); // Espaciado
 
-            // 1. Identificamos los títulos de tus columnas
-            const headers = ['ID Dato', 'Fecha', 'Valor', 'Comentario'];
-
-            // 2. Agregamos la fila
+            const headers = ['ID Dato', 'Fecha / Periodo', 'Valor', 'Comentario / Tipo'];
             const headerRow = worksheet.addRow(headers);
 
-            // 3. Aplicamos estilo solo a las celdas que contienen datos (de la 1 a la 4)
             headerRow.eachCell((cell, colNumber) => {
-                // Si el número de columna es 5 o mayor, no hacemos nada
                 if (colNumber <= headers.length) {
                     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                    cell.fill = {
-                        type: 'pattern',
-                        pattern: 'solid',
-                        fgColor: { argb: 'FF2C3E50' }
-                    };
-                    // Opcional: centramos el título
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2C3E50' } };
                     cell.alignment = { horizontal: 'center', vertical: 'middle' };
                 }
             });
 
-            // 3. INSERTAR DATOS Y ALINEACIÓN
+            // 3. ENMASCARADO DE FILAS DINÁMICAS EN EXCEL
             data.forEach(row => {
+                let celdaId = row.sensor_data_id ? row.sensor_data_id : '-';
+                let celdaFecha = '';
+                let celdaComentario = row.comment || '-';
+
+                if (usarAgregacion && row.date_time_end) {
+                    // Formateamos un string de rango limpio dentro de la celda de Excel
+                    const inicio = new Date(row.date_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const fin = new Date(row.date_time_end).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const fechaDia = new Date(row.date_time_end).toLocaleDateString();
+                    celdaFecha = `${inicio} a ${fin} (${fechaDia})`;
+                    celdaComentario = `Cálculo: ${aggregation.toUpperCase()}`;
+                } else {
+                    celdaFecha = new Date(row.date_time).toLocaleString();
+                }
+
                 const r = worksheet.addRow([
-                    row.sensor_data_id,
-                    new Date(row.date_time).toLocaleString(),
+                    celdaId,
+                    celdaFecha,
                     row.value,
-                    row.comment
+                    celdaComentario
                 ]);
 
-                // Centrar contenido de todas las celdas de la fila
                 r.eachCell((cell) => {
                     cell.alignment = { vertical: 'middle', horizontal: 'center' };
                 });
             });
 
-            // 4. AUTO-DIMENSIONADO Y ESTILO
-            // Recorremos las columnas para ajustar el ancho según el contenido
+            // Auto-dimensionado de columnas
             worksheet.columns.forEach(column => {
                 let maxLength = 0;
                 column.eachCell({ includeEmpty: true }, (cell) => {
                     const columnLength = cell.value ? cell.value.toString().length : 10;
                     if (columnLength > maxLength) maxLength = columnLength;
                 });
-                column.width = maxLength < 15 ? 15 : maxLength + 2; // Mínimo 15 de ancho
+                column.width = maxLength < 15 ? 15 : maxLength + 3;
             });
 
-            // 4. Enviar archivo
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', 'attachment; filename="Reporte_Sensores.xlsx"');
 
