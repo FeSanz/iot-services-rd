@@ -167,6 +167,41 @@ router.post('/workOrders', authenticateToken, async (req, res) => {
     }
 });
 
+// Obtener orden de trabajo por WorkOrderNumber
+router.get('/workOrders/byNumber/:workOrderNumber', authenticateToken, async (req, res) => {
+    const { workOrderNumber } = req.params;
+    const sqlQuery = `
+        SELECT
+            wo.work_order_id            AS "WorkOrderId",
+            wo.work_order_number        AS "WorkOrderNumber",
+            wo.work_definition_id       AS "WorkDefinitionId",
+            wo.organization_id          AS "OrganizationId",
+            wo.item_id                  AS "ItemId",
+            wo.planned_quantity         AS "PlannedQuantity",
+            wo.dispatched_quantity      AS "DispatchedQuantity",
+            wo.completed_quantity       AS "CompletedQuantity",
+            wo.dispatch_pending         AS "DispatchPending",
+            wo.scrap_pending            AS "ScrapPending",
+            wo.reject_pending           AS "RejectPending",
+            wo.status                   AS "Status",
+            wo.type                     AS "Type",
+            wo.start_date               AS "StartDate",
+            wo.end_date                 AS "CompletionDate",
+            wo.machine_id               AS "ResourceId",
+            m.code                      AS "ResourceCode",
+            i.number                    AS "ItemNumber",
+            i.description               AS "Description",
+            i.uom                       AS "UoM"
+        FROM mes_work_orders wo
+        LEFT JOIN mes_machines m ON m.machine_id = wo.machine_id
+        LEFT JOIN mes_items i ON i.item_id = wo.item_id
+        WHERE wo.work_order_number = $1`;
+
+    const result = await selectByParamsFromDB(sqlQuery, [workOrderNumber]);
+    const statusCode = result.errorsExistFlag ? 500 : 200;
+    res.status(statusCode).json(result);
+});
+
 // Eliminar registro por ID
 router.delete('/workOrders/:id', authenticateToken, async (req, res) => {
     try {
