@@ -252,22 +252,30 @@ router.get('/workDispatch/history/:organizationId/interval/:interval', authentic
     const { organizationId, interval } = req.params;
     const { Status } = req.query;
 
+    // tzOffset: minutos al oeste de UTC que devuelve JS getTimezoneOffset()
+    // p.ej. UTC-6 → 360. Se usa para comparar fechas en hora local del cliente.
+    const tzMinutes = parseInt(req.query.tzOffset || '0', 10);
+    const tzInterval = `INTERVAL '${Math.abs(tzMinutes)} minutes'`;
+    const tzSign     = tzMinutes >= 0 ? '-' : '+'; // restar offset convierte UTC→local
+
     let dateFilter = '';
     switch (interval) {
         case 'today':
-            dateFilter = "AND wd.created_date >= CURRENT_DATE AND wd.created_date < CURRENT_DATE + INTERVAL '1 day'";
+            // Comparar fecha local del registro con fecha local de ahora
+            dateFilter = `AND DATE_TRUNC('day', wd.created_date ${tzSign} ${tzInterval})
+                              = DATE_TRUNC('day', NOW() ${tzSign} ${tzInterval})`;
             break;
         case '7days':
-            dateFilter = "AND wd.created_date >= CURRENT_DATE - INTERVAL '7 days'";
+            dateFilter = `AND wd.created_date ${tzSign} ${tzInterval} >= DATE_TRUNC('day', NOW() ${tzSign} ${tzInterval}) - INTERVAL '7 days'`;
             break;
         case 'week':
-            dateFilter = "AND wd.created_date >= DATE_TRUNC('week', CURRENT_DATE)";
+            dateFilter = `AND DATE_TRUNC('week', wd.created_date ${tzSign} ${tzInterval}) = DATE_TRUNC('week', NOW() ${tzSign} ${tzInterval})`;
             break;
         case '30days':
-            dateFilter = "AND wd.created_date >= CURRENT_DATE - INTERVAL '30 days'";
+            dateFilter = `AND wd.created_date ${tzSign} ${tzInterval} >= DATE_TRUNC('day', NOW() ${tzSign} ${tzInterval}) - INTERVAL '30 days'`;
             break;
         case 'month':
-            dateFilter = "AND wd.created_date >= DATE_TRUNC('month', CURRENT_DATE)";
+            dateFilter = `AND DATE_TRUNC('month', wd.created_date ${tzSign} ${tzInterval}) = DATE_TRUNC('month', NOW() ${tzSign} ${tzInterval})`;
             break;
         default:
             return res.status(400).json({ errorsExistFlag: true, message: 'Intervalo no válido. Use: today, 7days, week, 30days, month', totalResults: 0, items: null });
@@ -302,8 +310,7 @@ router.get('/workDispatch/history/:organizationId/interval/:interval', authentic
             wd.created_date                                             AS "CreatedDate",
             wd.created_by                                               AS "CreatedBy",
             u.name                                                      AS "CreatedByName",
-            (SELECT COALESCE(SUM((op->>'TransactionQuantity')::numeric), 0)
-             FROM jsonb_array_elements(wd.request_payload->'Operations') AS op) AS "DispatchedQuantity"
+            COALESCE((wd.request_payload->'Operations'->0->>'TransactionQuantity')::numeric, 0) AS "DispatchedQuantity"
         FROM mes_work_orders wo
         INNER JOIN mes_work_dispatch wd ON wd.work_order_id = wo.work_order_id
         LEFT JOIN mes_items i ON i.item_id = wo.item_id
@@ -356,8 +363,7 @@ router.get('/workDispatch/history/:organizationId/between/:startDate/:endDate', 
             wd.created_date                                             AS "CreatedDate",
             wd.created_by                                               AS "CreatedBy",
             u.name                                                      AS "CreatedByName",
-            (SELECT COALESCE(SUM((op->>'TransactionQuantity')::numeric), 0)
-             FROM jsonb_array_elements(wd.request_payload->'Operations') AS op) AS "DispatchedQuantity"
+            COALESCE((wd.request_payload->'Operations'->0->>'TransactionQuantity')::numeric, 0) AS "DispatchedQuantity"
         FROM mes_work_orders wo
         INNER JOIN mes_work_dispatch wd ON wd.work_order_id = wo.work_order_id
         LEFT JOIN mes_items i ON i.item_id = wo.item_id
