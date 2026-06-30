@@ -28,7 +28,12 @@ router.get('/dispatchPending/:organization', authenticateToken, async (req, res)
                            --ITEM
                            i.number AS "ItemNumber",
                            i.description AS "Description",
-                           i.uom AS "UoM"
+                           i.uom AS "UoM",
+                           --EXECUTIONS pendientes (status = 0) de la OT
+                           COALESCE((SELECT array_agg(we.work_execution_id)
+                                     FROM mes_work_execution we
+                                     WHERE we.work_order_id = wo.work_order_id
+                                       AND we.status = 0), '{}') AS "WorkExecutionIds"
                        FROM MES_WORK_ORDERS wo
                                 LEFT JOIN MES_MACHINES m ON m.machine_id = wo.machine_id
                                 LEFT JOIN MES_WORK_CENTERS wc ON wc.work_center_id = m.work_center_id
@@ -49,6 +54,7 @@ router.get('/dispatchByShiftPending/:organization', authenticateToken, async (re
 
     const sqlQuery  = `WITH execution_local AS (
                                     SELECT
+                                        we.work_execution_id,
                                         we.work_order_id,
                                         we.ready,
                                         we.scrap,
@@ -61,6 +67,7 @@ router.get('/dispatchByShiftPending/:organization', authenticateToken, async (re
                                 ),
                                                         execution_shifted AS (
                                                             SELECT
+                                                                el.work_execution_id,
                                                                 el.work_order_id,
                                                                 el.ready,
                                                                 el.scrap,
@@ -119,7 +126,9 @@ router.get('/dispatchByShiftPending/:organization', authenticateToken, async (re
                                     -- ADVANCE
                                     SUM(es.ready)  AS "DispatchPending",
                                     SUM(es.scrap)  AS "ScrapPending",
-                                    SUM(es.reject) AS "RejectPending"
+                                    SUM(es.reject) AS "RejectPending",
+                                    -- IDs de ejecuciones que componen este turno
+                                    array_agg(es.work_execution_id) AS "WorkExecutionIds"
                                 FROM execution_shifted es
                                          INNER JOIN mes_work_orders wo
                                                     ON wo.work_order_id = es.work_order_id
