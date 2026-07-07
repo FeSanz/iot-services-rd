@@ -265,7 +265,7 @@ router.get('/alertsInterval/:id/:interval', authenticateToken, async (req, res) 
     res.status(statusCode).json(result);
 });
 //Obtener alertas por maquina e intervalo de fechas
-router.get('/alertsIntervalBetween/:id/:startDate/:endDate', authenticateToken, async (req, res) => {
+router.get('/alertsIntervalBetween/:id/:startDate/:endDate', /*authenticateToken,*/ async (req, res) => {
     const { id, startDate, endDate } = req.params;
     // Validar formato de fechas (YYYY-MM-DD)
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
