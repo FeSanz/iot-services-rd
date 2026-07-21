@@ -79,3 +79,8 @@ initMQTT().then((mqttClient) => {
 }).catch((err) => {
     console.error('[MQTT] Error:', err.message);
 });
+
+const { startMqttBroker } = require('./services/iot/mqtt_broker');
+startMqttBroker().catch((err) => {
+    console.error('[MQTT-BROKER] Error al iniciar:', err.message);
+});
