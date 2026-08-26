@@ -176,6 +176,60 @@ async function main() {
     assert.strictEqual(devuelto, antes, 'el interruptor no quedo como estaba');
     paso('limpieza: el interruptor queda como estaba');
 
+    // --- GET /ai/enabled: el boton sin esperar a un login --------------------
+    // El cliente leia AI_FLAG de userData.Company.Settings, que solo se llena al
+    // INICIAR SESION. Encender el bot en una compañia le pedia a todos sus
+    // usuarios volver a entrar para ver la burbuja, mientras el servidor ya lo
+    // estaba aplicando. Este endpoint es la respuesta de AHORA.
+    const preguntarSiHay = async (userId = USUARIO, conToken = true) => {
+        const r = await fetch(`${BASE_URL}/api/ai/enabled`, {
+            headers: conToken ? { Authorization: `Bearer ${token(userId)}` } : {},
+        });
+        return { status: r.status, json: await r.json().catch(() => null) };
+    };
+
+    const ponerFlag = (valor) => pool.query(
+        `UPDATE mes_settings SET value = $2 WHERE company_id = $1 AND name = 'AI_FLAG'`,
+        [COMPANIA, valor]
+    );
+
+    // La prueba de verdad: se cambia el interruptor en la base y se vuelve a
+    // preguntar SIN token nuevo. El mismo JWT, la otra respuesta.
+    await ponerFlag('true');
+    const encendido = await preguntarSiHay();
+    assert.strictEqual(encendido.status, 200, `esperaba 200, llego ${encendido.status}`);
+    // El nombre exacto que lee AiService.refrescar(). Si cambia, el boton
+    // desaparece y el build de Angular no dice nada.
+    assert.strictEqual(encendido.json?.items?.enabled, true,
+        'items.enabled debe ser true con AI_FLAG en true');
+
+    await ponerFlag('false');
+    const apagadoAhora = await preguntarSiHay();
+    assert.strictEqual(apagadoAhora.json?.items?.enabled, false,
+        'items.enabled debe ser false con AI_FLAG en false, con el MISMO token');
+    await ponerFlag(antes);
+    paso('GET /ai/enabled sigue al interruptor sin volver a iniciar sesion');
+
+    // Booleano de verdad, no 'false' ni 0: el cliente compara === true.
+    assert.strictEqual(typeof apagadoAhora.json.items.enabled, 'boolean',
+        'enabled tiene que ser booleano');
+    paso('items.enabled es booleano');
+
+    const sinTokenFlag = await preguntarSiHay(USUARIO, false);
+    assert.strictEqual(sinTokenFlag.status, 401, `sin token esperaba 401, dio ${sinTokenFlag.status}`);
+    // user_id 0 es el que reparte POST /api/getToken sin pedir credenciales.
+    // No existe en mes_users: no tiene organizaciones, asi que no tiene boton.
+    const fantasma = await preguntarSiHay(0);
+    assert.strictEqual(fantasma.status, 403, `el usuario fantasma esperaba 403, dio ${fantasma.status}`);
+    paso('sin token 401, y el SuperAdmin fantasma de getToken no tiene boton');
+
+    const devueltoOtraVez = (await pool.query(
+        `SELECT value FROM mes_settings WHERE company_id = $1 AND name = 'AI_FLAG'`,
+        [COMPANIA]
+    )).rows[0].value;
+    assert.strictEqual(devueltoOtraVez, antes, 'el interruptor no quedo como estaba');
+    paso('limpieza: el interruptor queda como estaba, tambien tras /ai/enabled');
+
     // --- el reporte en PDF (ETAPA 5) -----------------------------------------
     // Un PDF con datos de otra compañia seria la fuga mas comoda de todas: un
     // archivo listo para reenviar por correo. Por eso el reporte se prueba con

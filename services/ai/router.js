@@ -172,6 +172,39 @@ router.get('/ai/providers', authenticateToken, (req, res) => {
     res.status(200).json(envolver('OK', items));
 });
 
+// --- ¿hay que dibujar el boton? ---------------------------------------------
+//
+// El cliente ya sabe leer AI_FLAG, pero de userData.Company.Settings, que solo
+// se llena AL INICIAR SESION: encender el bot en una compañia obligaba a todos
+// sus usuarios a volver a entrar para que les apareciera la burbuja. El
+// servidor lo aplica al instante; el cliente tardaba un login.
+//
+// Esto NO da permiso, dice si pintar un boton. El interruptor que manda se
+// consulta en cada turno dentro de /ai/chat: esconder el boton no apaga nada,
+// quien tenga el token puede llamar al endpoint con curl.
+//
+// No pasa por companiaDeLaPeticion a proposito: con dos compañias esa lanza 409
+// pidiendo company_id, y para pintar un boton un 409 no es una respuesta. Si
+// alguna de las suyas lo tiene encendido, se dibuja -- el chat ya recorta por
+// compañia y ya sabe decir que no.
+//
+// Y mira tambien AGENT_ENABLED: con el agente apagado en la instancia, el boton
+// estaba ahi y cada pregunta se iba en 503. Un boton que no puede funcionar no
+// tiene por que estar.
+router.get('/ai/enabled', authenticateToken, async (req, res) => {
+    try {
+        const scope = await contexto(req, { exigirSuperAdmin: false });
+        const encendidas = await Promise.all(
+            scope.companyIds.map((id) => asistenteEncendido(id))
+        );
+        res.status(200).json(envolver('OK', {
+            enabled: process.env.AGENT_ENABLED === 'true' && encendidas.some(Boolean),
+        }));
+    } catch (e) {
+        responderError(res, e, 'GET /ai/enabled');
+    }
+});
+
 // --- borrar -----------------------------------------------------------------
 router.delete('/ai/credentials/:provider', authenticateToken, async (req, res) => {
     try {
