@@ -543,6 +543,35 @@ async function main() {
     assert.ok(!unSoloItem.grafica, 'con un solo articulo dibujo una grafica de una barra');
     paso('top_items con limite 1 no dibuja grafica: una barra sola no es una comparacion');
 
+    // --- 3.4945 el resumen por tipo tiene tope, y dice cuantos hay ----------
+    // Iba sin LIMIT: `failure_type` sale del catalogo de fallas, que es texto
+    // libre --hoy tres tipos, pero failure_name en la misma tabla ya va por
+    // 105-- y ese resumen entero se le manda al modelo Y alimenta el eje X de
+    // la grafica. Un catalogo suelto se llevaba el prompt por delante.
+    const conParos = await ejecutarTool('paros_de_maquina',
+        { desde: '2026-01-01', hasta: '2026-06-30', limite: 3 }, { scope: deSpace });
+
+    const tiposDeVerdad = Number((await pool.query(`
+        SELECT count(DISTINCT COALESCE(NULLIF(trim(failure_type), ''), 'sin tipo'))
+          FROM v_machine_stops
+         WHERE organization_id = ANY($1)
+           AND start_date >= '2026-01-01' AND start_date < '2026-07-01'`,
+        [deSpace.orgIds])).rows[0].count);
+
+    // LA aserción: el total sale del DATO, no de contar las filas que caben.
+    // Es el mismo error que hay_mas vino a cerrar en las listas.
+    assert.strictEqual(conParos.tipos_encontrados, tiposDeVerdad,
+        'tipos_encontrados no es el total de verdad');
+    assert.ok(conParos.resumen_por_tipo.length <= tiposDeVerdad);
+    assert.strictEqual(conParos.hay_mas_tipos,
+        tiposDeVerdad > conParos.resumen_por_tipo.length);
+    // Y la plomeria del conteo no puede viajar al prompt.
+    assert.ok(!conParos.resumen_por_tipo.some((t) => '_total' in t),
+        'el _total del conteo se colo en las filas que ve el modelo');
+    // El recorte de las FILAS es independiente del recorte del resumen.
+    assert.strictEqual(conParos.paros.length, 3, 'el limite de las filas no se respeto');
+    paso(`resumen_por_tipo dice cuantos tipos hay (${tiposDeVerdad}), no cuantos caben`);
+
     // --- 3.495 las herramientas se ofrecen SIEMPRE, tambien con historial ---
     // De la revision en vivo: con una negativa en el historial, el modelo
     // contesto "no hay herramienta que agrupe por turno" -- y la hay

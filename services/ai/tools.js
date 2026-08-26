@@ -15,6 +15,10 @@
 const { consultarConAlcance } = require('./scope');
 
 const LIMITE_MAXIMO = 50;   // tope duro de filas: esto va a un prompt
+// Tope de los RESUMENES agrupados. Mas bajo que el de las filas por dos motivos
+// que apuntan al mismo sitio: en el prompt cada grupo se paga, y en el chat una
+// grafica de mas de doce barras no se lee. Cuando se recorta, se dice.
+const TOPE_RESUMEN = 12;
 
 // Nota sobre los COALESCE(NULLIF(trim(x), ''), 'sin ...') que hay repartidos:
 // COALESCE solo atrapa NULL, y en esta base hay campos con la CADENA VACIA. Con
@@ -372,15 +376,29 @@ const TOOLS = {
                  LIMIT ${limite}`, r.valores, 'paros');
             const rows = lista.paros;
 
-            const { rows: porTipo } = await consultarConAlcance(ctx.scope, `
+            // Con tope, como todo lo que puede crecer. `failure_type` sale del
+            // catalogo de fallas, que es texto: hoy son tres tipos, pero
+            // failure_name en la misma tabla ya va por 105. Sin LIMIT, un
+            // catalogo suelto se llevaba el prompt por delante -- y desde que
+            // esto ademas alimenta una grafica, tambien el eje X.
+            //
+            // consultarLista hace el conteo y quita el _total de las filas; solo
+            // se le cambia el nombre a las claves, porque en esta respuesta
+            // total_encontrado ya es el de los paros.
+            const resumenTipos = await consultarLista(ctx.scope, `
                 SELECT COALESCE(NULLIF(trim(failure_type), ''), 'sin tipo') AS tipo,
                        count(*)::int AS cuantos,
-                       round(avg(duracion_min), 1) AS duracion_promedio_min
+                       round(avg(duracion_min), 1) AS duracion_promedio_min,
+                       -- Al final, no al principio: con GROUP BY 1 / ORDER BY 2
+                       -- las posiciones cuentan.
+                       count(*) OVER () AS _total
                   FROM v_machine_stops
                  WHERE organization_id = ANY($ORGS)
                  ${abiertos}
                  ${r.sql}
-                 GROUP BY 1 ORDER BY 2 DESC`, r.valores);
+                 GROUP BY 1 ORDER BY 2 DESC
+                 LIMIT ${TOPE_RESUMEN}`, r.valores, 'por_tipo');
+            const porTipo = resumenTipos.por_tipo;
 
             return {
                 periodo_pedido: { desde, hasta },
@@ -389,6 +407,11 @@ const TOOLS = {
                     ? 'No se pidieron fechas: esto es TODA la historia. Di de que fechas son las cifras.'
                     : undefined,
                 resumen_por_tipo: porTipo,
+                // Los tipos que HAY, no los que caben: contar las filas del
+                // resumen y cantarlo como total es el mismo error que hay_mas
+                // vino a cerrar en las listas.
+                tipos_encontrados: resumenTipos.total_encontrado,
+                hay_mas_tipos: resumenTipos.hay_mas,
                 ...lista,
                 // Se grafica el RESUMEN por tipo, no las filas: las filas son
                 // paros sueltos ordenados por fecha, y una barra por paro no
@@ -398,7 +421,9 @@ const TOOLS = {
                 ...(porTipo.length > 1 ? {
                     grafica: grafica({
                         tipo: 'barras',
-                        titulo: 'Paros por tipo',
+                        titulo: resumenTipos.hay_mas
+                            ? `Paros por tipo (los ${porTipo.length} mayores de ${resumenTipos.total_encontrado})`
+                            : 'Paros por tipo',
                         eje_x: porTipo.map((f) => String(f.tipo)),
                         series: [
                             { nombre: 'paros', datos: porTipo.map((f) => Number(f.cuantos) || 0) },
