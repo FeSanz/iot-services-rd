@@ -409,3 +409,8 @@ function drawLegendDot(doc, x, y, color, label) {
 }
 
 module.exports = router;
+// Exportado para que el reporte del bot (services/ai/reporte.js) dibuje los KPI
+// con la MISMA caja que los reportes que el MES ya genera. Reusarlo no es solo
+// ahorrarse 20 lineas: es que los dos PDF se parezcan sin tener que acordarse
+// de cambiar dos sitios. No se toco nada de lo de arriba.
+module.exports.drawKpiRow = drawKpiRow;
