@@ -390,6 +390,21 @@ const TOOLS = {
                     : undefined,
                 resumen_por_tipo: porTipo,
                 ...lista,
+                // Se grafica el RESUMEN por tipo, no las filas: las filas son
+                // paros sueltos ordenados por fecha, y una barra por paro no
+                // dice nada. Solo `cuantos`: meter tambien la duracion promedio
+                // en el mismo eje deja una de las dos series invisible, porque
+                // van en escalas distintas (125 paros contra 3 311 minutos).
+                ...(porTipo.length > 1 ? {
+                    grafica: grafica({
+                        tipo: 'barras',
+                        titulo: 'Paros por tipo',
+                        eje_x: porTipo.map((f) => String(f.tipo)),
+                        series: [
+                            { nombre: 'paros', datos: porTipo.map((f) => Number(f.cuantos) || 0) },
+                        ],
+                    }),
+                } : {}),   // con un solo tipo no hay nada que comparar
             };
         },
     },
@@ -857,6 +872,21 @@ TOOLS.top_items = {
                 ? 'No se pidieron fechas: esto es TODA la historia. Dilo.'
                 : undefined,
             items: rows,
+            // Planeado contra completado: la comparacion que se busca al pedir
+            // "que se produjo mas" es si se hizo lo que se habia planeado.
+            // Comparten escala, asi que van en el mismo eje sin que una tape a
+            // la otra.
+            ...(rows.length > 1 ? {
+                grafica: grafica({
+                    tipo: 'barras',
+                    titulo: 'Planeado contra completado por articulo',
+                    eje_x: rows.map((f) => String(f.item)),
+                    series: [
+                        { nombre: 'planeado',   datos: rows.map((f) => Number(f.planeado) || 0) },
+                        { nombre: 'completado', datos: rows.map((f) => Number(f.completado) || 0) },
+                    ],
+                }),
+            } : {}),   // con un solo articulo no hay nada que comparar
         };
     },
 };

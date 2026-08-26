@@ -512,6 +512,37 @@ async function main() {
     assert.ok(/\d/.test(sinLlave.resumen), 'la redaccion estatica se quedo sin cifras');
     paso('la redaccion estatica si lleva cifras: las pone el codigo, no el modelo');
 
+    // --- 3.494 las tools que comparan devuelven grafica ---------------------
+    // El pendiente que arrastraba el plan: top_items y paros_de_maquina piden
+    // barras y no las llevaban. La grafica la arma la TOOL con los datos que
+    // acaba de leer -- si la dictara el modelo tendria que volver a escribir los
+    // numeros, y volver a escribir un numero es como se inventan.
+    for (const [herramienta, args, serieEsperada] of [
+        ['top_items',        { desde: '2026-01-01', hasta: '2026-06-30' }, 'completado'],
+        ['paros_de_maquina', { desde: '2026-01-01', hasta: '2026-06-30' }, 'paros'],
+        ['resumen_produccion', { agrupar_por: 'turno' }, 'cajas'],
+    ]) {
+        const r = await ejecutarTool(herramienta, args, { scope: deSpace });
+        assert.ok(r.grafica, `${herramienta} no devolvio grafica`);
+        assert.strictEqual(r.grafica.tipo, 'barras');
+        assert.ok(r.grafica.eje_x.length > 1, `${herramienta}: una barra no es una comparacion`);
+        assert.ok(r.grafica.series.some((se) => se.nombre === serieEsperada),
+            `${herramienta}: falta la serie "${serieEsperada}"`);
+        for (const se of r.grafica.series) {
+            assert.strictEqual(se.datos.length, r.grafica.eje_x.length,
+                `${herramienta}: la serie "${se.nombre}" no cuadra con el eje`);
+            assert.ok(se.datos.every((d) => typeof d === 'number' && Number.isFinite(d)),
+                `${herramienta}: la serie "${se.nombre}" trae algo que no es un numero`);
+        }
+    }
+    paso('top_items, paros_de_maquina y resumen_produccion devuelven su grafica, armada por la tool');
+
+    // Y con un solo grupo NO hay grafica: eso no es una comparacion, es un
+    // numero, y una barra sola en el chat solo ocupa sitio.
+    const unSoloItem = await ejecutarTool('top_items', { limite: 1 }, { scope: deSpace });
+    assert.ok(!unSoloItem.grafica, 'con un solo articulo dibujo una grafica de una barra');
+    paso('top_items con limite 1 no dibuja grafica: una barra sola no es una comparacion');
+
     // --- 3.495 las herramientas se ofrecen SIEMPRE, tambien con historial ---
     // De la revision en vivo: con una negativa en el historial, el modelo
     // contesto "no hay herramienta que agrupe por turno" -- y la hay
