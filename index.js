@@ -56,6 +56,8 @@ app.use('/api', require('./services/mqtt/mqtt_routes'));
 
 app.use('/api', require('./services/iot/exportEndpoints'));
 
+app.use('/api', require('./services/ai/router'));
+
 const { initWebSocket } = require('./services/websocket/websocket');
 
 app.get('/', (req, res) => {
