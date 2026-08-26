@@ -572,6 +572,31 @@ async function main() {
     assert.strictEqual(conParos.paros.length, 3, 'el limite de las filas no se respeto');
     paso(`resumen_por_tipo dice cuantos tipos hay (${tiposDeVerdad}), no cuantos caben`);
 
+    // --- 3.4946 el periodo declarado cubre las CIFRAS, no la pagina ---------
+    // Se calculaba en JS recorriendo las filas que caben. Con limite 3 sobre
+    // 180 paros ordenados por fecha descendente, el periodo salia de 14
+    // MINUTOS -- y al lado iba total_encontrado 180 y un resumen por tipo
+    // agregado sobre los seis meses. El prompt le manda al modelo decir el
+    // periodo, asi que el error salia por la boca del bot.
+    const rango = (await pool.query(`
+        SELECT min(start_date) AS d, max(start_date) AS h
+          FROM v_machine_stops
+         WHERE organization_id = ANY($1)
+           AND start_date >= '2026-01-01' AND start_date < '2026-07-01'`,
+        [deSpace.orgIds])).rows[0];
+
+    assert.deepStrictEqual(conParos.periodo_real_cubierto,
+        { desde: rango.d.toISOString(), hasta: rango.h.toISOString() },
+        'el periodo declarado no es el de todos los paros del filtro');
+    // Y que la prueba muerda: con 3 filas de 180, el periodo tiene que ser mas
+    // ancho que lo que abarcan esas 3.
+    assert.ok(conParos.hay_mas, 'sin recorte esta prueba no distingue nada');
+    assert.ok(new Date(conParos.periodo_real_cubierto.desde)
+              < new Date(conParos.paros.at(-1).start_date),
+        'el periodo se quedo con el de la pagina');
+    paso('el periodo declarado cubre todo el filtro, no solo las filas que caben');
+
+
     // --- 3.495 las herramientas se ofrecen SIEMPRE, tambien con historial ---
     // De la revision en vivo: con una negativa en el historial, el modelo
     // contesto "no hay herramienta que agrupe por turno" -- y la hay

@@ -114,12 +114,20 @@ function rangoFechas(columna, desde, hasta, siguiente) {
 async function consultarLista(scope, sql, valores, nombreFilas) {
     const { rows } = await consultarConAlcance(scope, sql, valores);
     const total = rows.length ? Number(rows[0]._total) : 0;
+    const periodo = periodoDeLaConsulta(rows);
     // Fuera del resultado: es plomeria, y cada fila que va al prompt se paga.
-    for (const fila of rows) delete fila._total;
+    for (const fila of rows) {
+        delete fila._total;
+        delete fila._desde;
+        delete fila._hasta;
+    }
     return {
         total_encontrado: total,
         mostradas: rows.length,
         hay_mas: total > rows.length,
+        // Junto a hay_mas, que es su pareja: los dos dicen lo mismo --que la
+        // lista viene recortada y las cifras no-- por dos lados distintos.
+        ...(periodo ? { periodo_real_cubierto: periodo } : {}),
         [nombreFilas]: rows,
     };
 }
@@ -171,17 +179,27 @@ async function notaSinDatos(ctx, vista, desde, hasta) {
 }
 
 /** De que fechas son en realidad las filas que se devuelven. */
-function periodoDe(filas, campoIni = 'primera', campoFin = 'ultima') {
-    const fechas = filas
-        .flatMap((f) => [f[campoIni], f[campoFin]])
-        .filter(Boolean)
-        .map((d) => new Date(d))
-        .filter((d) => !Number.isNaN(d.getTime()));
-    if (fechas.length === 0) return null;
-    return {
-        desde: new Date(Math.min(...fechas)).toISOString(),
-        hasta: new Date(Math.max(...fechas)).toISOString(),
-    };
+/**
+ * El periodo que cubren las cifras, leido de `_desde` / `_hasta`.
+ *
+ * Lo calcula Postgres con min(...) OVER () / max(...) OVER (): ventana sobre el
+ * conjunto ENTERO, que se evalua ANTES del LIMIT. Aqui se calculaba recorriendo
+ * las filas, y eso daba el periodo de las filas que CABEN, no el de las cifras.
+ * Con `hay_mas` en true --y en paros, con un resumen por tipo agregado sobre
+ * todo el rango justo al lado-- el modelo cantaba un periodo mas corto que los
+ * numeros que estaba explicando. El prompt le manda decirlo ("Si trae
+ * periodo_real_cubierto, di de que fechas son las cifras"), asi que el error no
+ * se quedaba en el JSON: salia por la boca del bot.
+ *
+ * Si la consulta no trae el rango, `new Date(undefined)` es NaN y esto devuelve
+ * null: no hace falta preguntar aparte.
+ */
+function periodoDeLaConsulta(filas) {
+    if (filas.length === 0) return null;
+    const ini = new Date(filas[0]._desde);
+    const fin = new Date(filas[0]._hasta);
+    if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) return null;
+    return { desde: ini.toISOString(), hasta: fin.toISOString() };
 }
 
 // --- las tools --------------------------------------------------------------
@@ -306,7 +324,12 @@ const TOOLS = {
                        -- Al final, no al principio: con GROUP BY 1 / ORDER BY 1
                        -- las posiciones cuentan, y de primera columna esta
                        -- rompia la consulta entera.
-                       count(*) OVER ()       AS _total
+                       count(*) OVER ()       AS _total,
+                       -- El rango del conjunto entero, no el de los grupos que
+                       -- caben. Agregado dentro de ventana: la ventana se evalua
+                       -- despues del GROUP BY y antes del LIMIT.
+                       min(min(execution_date)) OVER () AS _desde,
+                       max(max(execution_date)) OVER () AS _hasta
                   FROM ${vista}
                  WHERE organization_id = ANY($ORGS)
                  ${r.sql}
@@ -318,10 +341,9 @@ const TOOLS = {
             return {
                 agrupado_por: agrupar,
                 periodo_pedido: { desde, hasta },
-                // Sin esto el modelo presenta la historia entera como si fuera
-                // el periodo que le pidieron. Le decimos que fechas son de
-                // verdad y que lo diga.
-                periodo_real_cubierto: periodoDe(rows),
+                // periodo_real_cubierto viaja dentro de `lista`: sin el, el
+                // modelo presenta la historia entera como si fuera el periodo
+                // que le pidieron.
                 nota: rows.length === 0
                     ? await notaSinDatos(ctx, vista, desde, hasta)
                     : (!desde && !hasta
@@ -365,6 +387,12 @@ const TOOLS = {
 
             const lista = await consultarLista(ctx.scope, `
                 SELECT count(*) OVER () AS _total,
+                       -- El rango de TODOS los paros del filtro, no el de los
+                       -- que caben: van ordenados por fecha descendente, asi que
+                       -- recortar la lista recortaba el periodo por el extremo
+                       -- viejo y el resumen de abajo seguia contandolos todos.
+                       min(start_date) OVER () AS _desde,
+                       max(start_date) OVER () AS _hasta,
                        machine_code, machine_name, work_center_name,
                        status, failure_name, failure_type, failure_area,
                        start_date, end_date, duracion_min
@@ -402,7 +430,6 @@ const TOOLS = {
 
             return {
                 periodo_pedido: { desde, hasta },
-                periodo_real_cubierto: periodoDe(rows, 'start_date', 'start_date'),
                 nota: (!desde && !hasta && rows.length)
                     ? 'No se pidieron fechas: esto es TODA la historia. Di de que fechas son las cifras.'
                     : undefined,
