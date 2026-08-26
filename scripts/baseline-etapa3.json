@@ -1,0 +1,876 @@
+{
+  "generado": "2026-08-21T23:25:09.583Z",
+  "base_url": "http://localhost:3000",
+  "totales": {
+    "get": 63,
+    "ok": 58,
+    "fallos": 5,
+    "omitidas": 0
+  },
+  "endpoints": [
+    {
+      "ruta": "/ai/credentials",
+      "archivo": "services/ai/router",
+      "probada": "/ai/credentials",
+      "status": 403,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/ai/providers",
+      "archivo": "services/ai/router",
+      "probada": "/ai/providers",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 3
+    },
+    {
+      "ruta": "/alerts/:companyId",
+      "archivo": "services/iot/alerts",
+      "probada": "/alerts/1",
+      "status": 500,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/alerts/check-active/:machineToken",
+      "archivo": "services/iot/alerts",
+      "probada": "/alerts/check-active/002defb1-6ccc-4231-be3b-1dcab57e2eb2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "alertDetails",
+        "errorsExistFlag",
+        "isActive",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/alertsByOrganizations/finaliced",
+      "archivo": "services/iot/alerts",
+      "probada": "/alertsByOrganizations/finaliced",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 0
+    },
+    {
+      "ruta": "/alertsByOrganizations/pendings",
+      "archivo": "services/iot/alerts",
+      "probada": "/alertsByOrganizations/pendings",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 2
+    },
+    {
+      "ruta": "/alertsInterval/:id/:interval",
+      "archivo": "services/iot/alerts",
+      "probada": "/alertsInterval/1/30days",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/alertsIntervalBetween/:id/:startDate/:endDate",
+      "archivo": "services/iot/alerts",
+      "probada": "/alertsIntervalBetween/1/2026-06-01/2026-06-19",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/campaign/:campaign_id",
+      "archivo": "services/fusion/campaigns.js",
+      "probada": "/campaign/21",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "campaign_id",
+        "code",
+        "coils",
+        "description",
+        "enabled_flag",
+        "end_date",
+        "last_update",
+        "name",
+        "organization_id",
+        "start_date",
+        "started_date",
+        "status_telegram",
+        "work_center_id",
+        "work_orders"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/campaigns/:work_center_id",
+      "archivo": "services/fusion/campaigns.js",
+      "probada": "/campaigns/9",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items"
+      ],
+      "filas": 0
+    },
+    {
+      "ruta": "/codes",
+      "archivo": "services/fusion/codes.js",
+      "probada": "/codes",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 1
+    },
+    {
+      "ruta": "/codes/:code",
+      "archivo": "services/fusion/codes.js",
+      "probada": "/codes/202604",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "RowCtor",
+        "_parsers",
+        "_prebuiltEmptyResultObject",
+        "_types",
+        "command",
+        "fields",
+        "oid",
+        "rowAsArray",
+        "rowCount",
+        "rows"
+      ],
+      "filas": 1
+    },
+    {
+      "ruta": "/dashboards/group/:groupId",
+      "archivo": "services/iot/dashboards",
+      "probada": "/dashboards/group/7",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "dashboardData",
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 18
+    },
+    {
+      "ruta": "/dashboardsGroup/byOrganizations",
+      "archivo": "services/iot/dashboardGroups",
+      "probada": "/dashboardsGroup/byOrganizations",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 2
+    },
+    {
+      "ruta": "/dashboardsGroup/company/:companyId",
+      "archivo": "services/iot/dashboardGroups",
+      "probada": "/dashboardsGroup/company/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 9
+    },
+    {
+      "ruta": "/dispatchByShftBetween/:organization/:startDate/:endDate",
+      "archivo": "services/fusion/dispatch_orders",
+      "probada": "/dispatchByShftBetween/2/2026-06-01/2026-06-19",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/dispatchByShftInterval/:organization/:interval",
+      "archivo": "services/fusion/dispatch_orders",
+      "probada": "/dispatchByShftInterval/2/30days",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/dispatchByShiftPending/:organization",
+      "archivo": "services/fusion/dispatch_orders",
+      "probada": "/dispatchByShiftPending/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 8
+    },
+    {
+      "ruta": "/dispatchPending/:organization",
+      "archivo": "services/fusion/dispatch_orders",
+      "probada": "/dispatchPending/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 3
+    },
+    {
+      "ruta": "/failuresByCompany/:companyId",
+      "archivo": "services/iot/failtures",
+      "probada": "/failuresByCompany/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 142
+    },
+    {
+      "ruta": "/failuresByOrganizations",
+      "archivo": "services/iot/failtures",
+      "probada": "/failuresByOrganizations",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 98
+    },
+    {
+      "ruta": "/force-logout/:userId",
+      "archivo": "services/iot/users",
+      "probada": "/force-logout/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/items",
+      "archivo": "services/fusion/items",
+      "probada": "/items",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 203
+    },
+    {
+      "ruta": "/items/:company/:type",
+      "archivo": "services/fusion/items",
+      "probada": "/items/1/P",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/lastWOCompleted/:organizationId",
+      "archivo": "services/fusion/work_execution",
+      "probada": "/lastWOCompleted/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 5
+    },
+    {
+      "ruta": "/machine/:machId",
+      "archivo": "services/iot/machines",
+      "probada": "/machine/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/machines/:userId",
+      "archivo": "services/iot/machines",
+      "probada": "/machines/1",
+      "status": 500,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/machinesAndSensors/:userId",
+      "archivo": "services/iot/machines",
+      "probada": "/machinesAndSensors/1",
+      "status": 500,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/machinesAndSensorsByCompany/:companyId",
+      "archivo": "services/iot/machines",
+      "probada": "/machinesAndSensorsByCompany/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 43
+    },
+    {
+      "ruta": "/machinesAndSensorsByOrganization",
+      "archivo": "services/iot/machines",
+      "probada": "/machinesAndSensorsByOrganization",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "items"
+      ],
+      "filas": 7
+    },
+    {
+      "ruta": "/machinesAndSensorsByOrganizations",
+      "archivo": "services/iot/machines",
+      "probada": "/machinesAndSensorsByOrganizations",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 10
+    },
+    {
+      "ruta": "/machinesAndSensorsLastValues",
+      "archivo": "services/iot/machines",
+      "probada": "/machinesAndSensorsLastValues",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "items"
+      ],
+      "filas": 7
+    },
+    {
+      "ruta": "/machinesByOrganizations",
+      "archivo": "services/iot/machines",
+      "probada": "/machinesByOrganizations",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 73
+    },
+    {
+      "ruta": "/mqtt/status",
+      "archivo": "services/mqtt/mqtt_routes",
+      "probada": "/mqtt/status",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "mqtt",
+        "success"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/organizations",
+      "archivo": "services/fusion/organizations",
+      "probada": "/organizations",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 12
+    },
+    {
+      "ruta": "/organizations/:company",
+      "archivo": "services/fusion/organizations",
+      "probada": "/organizations/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 10
+    },
+    {
+      "ruta": "/orgResourceMachines/:organization",
+      "archivo": "services/fusion/resources",
+      "probada": "/orgResourceMachines/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 76
+    },
+    {
+      "ruta": "/ping",
+      "archivo": "services/iot/alerts",
+      "probada": "/ping",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "status"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/resourceMachines",
+      "archivo": "services/fusion/resources",
+      "probada": "/resourceMachines",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 118
+    },
+    {
+      "ruta": "/resourceMachines/:organization/:wc",
+      "archivo": "services/fusion/resources",
+      "probada": "/resourceMachines/2/9",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/sensorData/:sensorID",
+      "archivo": "services/iot/sensor_data",
+      "probada": "/sensorData/147",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "existError",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/sensorHistory",
+      "archivo": "services/iot/machines",
+      "probada": "/sensorHistory",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "history",
+        "sensor",
+        "siblings"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/sensors/:machineId",
+      "archivo": "services/iot/sensors",
+      "probada": "/sensors/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 3
+    },
+    {
+      "ruta": "/sensorsData",
+      "archivo": "services/iot/sensor_data",
+      "probada": "/sensorsData",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalSensors"
+      ],
+      "filas": 5
+    },
+    {
+      "ruta": "/sensorsData/export",
+      "archivo": "services/iot/exportEndpoints",
+      "probada": "/sensorsData/export",
+      "status": 200,
+      "json": false,
+      "claves": [],
+      "filas": null
+    },
+    {
+      "ruta": "/sensorsDataHM",
+      "archivo": "services/iot/sensor_data",
+      "probada": "/sensorsDataHM",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message"
+      ],
+      "filas": 5
+    },
+    {
+      "ruta": "/sensorsLatest",
+      "archivo": "services/iot/sensor_data",
+      "probada": "/sensorsLatest",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "existError",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 5
+    },
+    {
+      "ruta": "/settings/:company",
+      "archivo": "services/fusion/integrations",
+      "probada": "/settings/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 5
+    },
+    {
+      "ruta": "/settingsFusionExist/:company",
+      "archivo": "services/fusion/integrations",
+      "probada": "/settingsFusionExist/1",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 1
+    },
+    {
+      "ruta": "/shifts/:organization",
+      "archivo": "services/fusion/shifts",
+      "probada": "/shifts/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 3
+    },
+    {
+      "ruta": "/userNumber",
+      "archivo": "services/iot/users",
+      "probada": "/userNumber",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/users",
+      "archivo": "services/iot/users",
+      "probada": "/users",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 15
+    },
+    {
+      "ruta": "/verifyCode/:code",
+      "archivo": "services/fusion/codes.js",
+      "probada": "/verifyCode/202604",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/work-orders/without-campaign/:organization_id/:work_center_id",
+      "archivo": "services/fusion/campaigns.js",
+      "probada": "/work-orders/without-campaign/2/9",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items"
+      ],
+      "filas": 0
+    },
+    {
+      "ruta": "/work-orders/without-campaign/:work_center_id",
+      "archivo": "services/fusion/campaigns.js",
+      "probada": "/work-orders/without-campaign/9",
+      "status": 404,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "message"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/workCenters/:organization",
+      "archivo": "services/fusion/work_centers",
+      "probada": "/workCenters/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 5
+    },
+    {
+      "ruta": "/workDispatch/:workDispatchId",
+      "archivo": "services/fusion/dispatch_backflush",
+      "probada": "/workDispatch/5",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 1
+    },
+    {
+      "ruta": "/workDispatch/byOrganization/:organizationId",
+      "archivo": "services/fusion/dispatch_backflush",
+      "probada": "/workDispatch/byOrganization/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 4
+    },
+    {
+      "ruta": "/workDispatch/byWorkOrder/:workOrderId",
+      "archivo": "services/fusion/dispatch_backflush",
+      "probada": "/workDispatch/byWorkOrder/385",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/workDispatch/history/:organizationId/between/:startDate/:endDate",
+      "archivo": "services/fusion/dispatch_backflush",
+      "probada": "/workDispatch/history/2/between/2026-06-01/2026-06-19",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/workDispatch/history/:organizationId/interval/:interval",
+      "archivo": "services/fusion/dispatch_backflush",
+      "probada": "/workDispatch/history/2/interval/30days",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": null
+    },
+    {
+      "ruta": "/workOrders/:organization",
+      "archivo": "services/fusion/work_orders",
+      "probada": "/workOrders/2",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 73
+    },
+    {
+      "ruta": "/workOrders/byNumber/:workOrderNumber",
+      "archivo": "services/fusion/work_orders",
+      "probada": "/workOrders/byNumber/8891",
+      "status": 200,
+      "json": true,
+      "claves": [
+        "errorsExistFlag",
+        "items",
+        "message",
+        "totalResults"
+      ],
+      "filas": 1
+    }
+  ]
+}
