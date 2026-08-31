@@ -18,9 +18,18 @@
 const llm = require('./llm.client');
 const domain = require('./domain');
 const { esquemasParaElModelo, ejecutarTool } = require('./tools');
+const { cifrasSinRespaldo } = require('./respaldo');
 
 const MAX_VUELTAS = Number(process.env.AGENT_MAX_LOOPS || 10);
 const MAX_SEGUNDOS = Number(process.env.AGENT_MAX_SECONDS || 90);
+// Cuantas tool_calls por VUELTA. El numero lo decide el proveedor, no este
+// codigo, y la URL del proveedor la configura el cliente: uno hostil o roto
+// puede mandar miles en un solo turno, y MAX_VUELTAS no acota eso. Un modelo
+// de verdad rara vez pasa de cinco.
+const MAX_TOOLS_POR_VUELTA = Number(process.env.AGENT_MAX_TOOLS_PER_TURN || 20);
+// El guardia de cifras: 'corrige' para que pida una correccion y avise al
+// usuario; cualquier otra cosa deja el aviso solo en el log. Ver mas abajo.
+const CORRIGE = process.env.AI_GUARDIA_CIFRAS === 'corrige';
 
 function systemPrompt(ahora = new Date()) {
     // La fecha va en el prompt porque el modelo NO la sabe: preguntando por una
@@ -99,6 +108,10 @@ async function conversar({ scope, credencial, historial = [], pregunta }) {
     // la misma respuesta y nadie sabe cual baja que.
     let reporte = null;
     let tokens = { prompt: 0, completion: 0 };
+    // Lo que devolvieron las herramientas en este turno: es el unico respaldo
+    // valido para las cifras de la respuesta final.
+    const salidas = [];
+    let corregido = false;
 
     const mensajes = [
         { role: 'system', content: systemPrompt() },
@@ -127,9 +140,73 @@ async function conversar({ scope, credencial, historial = [], pregunta }) {
             };
         }
 
-        const llamadas = message.tool_calls || [];
+        let llamadas = message.tool_calls || [];
         if (llamadas.length === 0) {
-            return { texto: message.content || '', herramientasUsadas, graficas: graficas(), reporte, tokens, vueltas: vuelta };
+            const texto = message.content || '';
+
+            // El guardia de cifras. El modelo ya contesto; antes de darlo por
+            // bueno se comprueba que cada numero de la respuesta salga de lo que
+            // devolvieron las herramientas -- ver respaldo.js para el fallo que
+            // lo trajo aqui (conto filas y las llamo "ordenes").
+            const sueltas = cifrasSinRespaldo(texto, salidas);
+
+            // POR QUE ESTO NO CORRIGE POR OMISION. Medido contra el modelo real
+            // con seis preguntas normales: la comprobacion marco cinco. Dos
+            // motivos, y solo uno era arreglable -- las fechas abreviadas, ya
+            // corregidas en respaldo.js. El otro no lo es: el modelo suma dos
+            // resultados ("86 + 33 = 119 ordenes") y eso es correcto, pero
+            // admitir sumas entre cifras sueltas tambien admitiria el 6 del
+            // fallo original (1 + 5 de la misma tabla). O marca de mas, o deja
+            // pasar justo lo que vino a cazar.
+            //
+            // Asi que por omision AVISA EN EL LOG y no toca la respuesta del
+            // usuario. Con AI_GUARDIA_CIFRAS=corrige pide una correccion y, si
+            // el modelo insiste, entrega la respuesta con el aviso a la vista.
+            // ponytail: la medicion esta en la bitacora; si el ruido baja lo
+            // suficiente, el modo `corrige` pasa a ser el de fabrica.
+            if (sueltas.length && !CORRIGE) {
+                console.warn(`[AI] cifras sin respaldo en la respuesta: ${sueltas.join(', ')}`
+                    + ` | tools: ${herramientasUsadas.map((h) => h.nombre).join(',') || '(ninguna)'}`);
+                return {
+                    texto, herramientasUsadas, graficas: graficas(), reporte, tokens,
+                    vueltas: vuelta, cifrasSinRespaldo: sueltas,
+                };
+            }
+
+            // Una sola correccion. Si a la segunda sigue sin respaldo, se
+            // entrega igual: callar la respuesta seria peor que entregarla con
+            // el aviso, y reintentar en bucle es pagar el turno tres veces.
+            if (sueltas.length && !corregido) {
+                corregido = true;
+                mensajes.push(message);
+                mensajes.push({
+                    role: 'user',
+                    content: `Estas cifras de tu respuesta no salen de ninguna herramienta: `
+                        + `${sueltas.join(', ')}. No cuentes filas de un resultado para presentarlas `
+                        + `como otra metrica. Llama a la herramienta que da esos datos y corrige la `
+                        + `respuesta; si no hay herramienta para eso, dilo y no des la cifra.`,
+                });
+                continue;
+            }
+
+            return {
+                texto: sueltas.length ? `${texto}\n\n_(No pude respaldar con los datos consultados: `
+                                        + `${sueltas.join(', ')}. Tomalas con reserva.)_`
+                                      : texto,
+                herramientasUsadas,
+                graficas: graficas(),
+                reporte,
+                tokens,
+                vueltas: vuelta,
+                cifrasSinRespaldo: sueltas,
+            };
+        }
+        if (llamadas.length > MAX_TOOLS_POR_VUELTA) {
+            console.warn(`[AI] el proveedor pidio ${llamadas.length} tools en una vuelta; recortado a ${MAX_TOOLS_POR_VUELTA}`);
+            // Se recorta TAMBIEN en el mensaje que va al historial: el proveedor
+            // exige un role:'tool' por cada tool_call que anuncio el asistente.
+            llamadas = llamadas.slice(0, MAX_TOOLS_POR_VUELTA);
+            message.tool_calls = llamadas;
         }
 
         // El historial necesita el turno del asistente con sus tool_calls, o el
@@ -137,6 +214,10 @@ async function conversar({ scope, credencial, historial = [], pregunta }) {
         mensajes.push(message);
 
         for (const llamada of llamadas) {
+            // El reloj tambien DENTRO de la vuelta: las tools son consultas de
+            // hasta 15 s cada una, y mirar la hora solo entre vueltas dejaba
+            // ejecutar la lista entera con el tiempo ya vencido.
+            if (limite.aborted) break;
             const nombre = llamada.function?.name;
             const argumentos = llamada.function?.arguments;
             const resultado = await ejecutarTool(nombre, argumentos, ctx);
@@ -167,6 +248,7 @@ async function conversar({ scope, credencial, historial = [], pregunta }) {
                 };
             }
 
+            salidas.push(paraElModelo);
             mensajes.push({
                 role: 'tool',
                 tool_call_id: llamada.id,

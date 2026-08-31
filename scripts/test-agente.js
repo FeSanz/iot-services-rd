@@ -18,7 +18,7 @@ const pool = require('../database/pool');
 const poolReadonly = require('../database/poolReadonly');
 const { resolveScope, scopeDeCompania } = require('../services/ai/scope');
 const { TOOLS, esquemasParaElModelo, ejecutarTool, enumerado, entero, fecha } = require('../services/ai/tools');
-const { datosDelReporte, dibujarReporte } = require('../services/ai/reporte');
+const { datosDelReporte, dibujarReporte, periodoAnterior, variacion } = require('../services/ai/reporte');
 const { paletaDe, PALETA_BASE } = require('../services/ai/portada');
 const { redactarComentario, redaccionEstatica, cifras, partir,
         cifrasEnElTexto } = require('../services/ai/comentario');
@@ -26,6 +26,7 @@ const cupo = require('../services/ai/cupo');
 const jwt = require('jsonwebtoken');
 const llm = require('../services/ai/llm.client');
 const { conversar, systemPrompt } = require('../services/ai/agent');
+const { cifrasSinRespaldo } = require('../services/ai/respaldo');
 
 async function main() {
     let ok = 0;
@@ -343,8 +344,20 @@ async function main() {
 
     assert.strictEqual(pdfBase.subarray(0, 5).toString(), '%PDF-', 'lo dibujado no es un PDF');
     assert.ok(pdfBase.length > 20000, `el PDF pesa ${pdfBase.length} bytes: se quedo a medias`);
+    // Las secciones FLUYEN: solo abren pagina nueva cuando lo que queda de hoja
+    // no da para el titulo y algo debajo. Por eso aqui ya no se cuenta "una
+    // pagina por seccion" -- eso ataba la prueba al hueco que dejara cada
+    // tabla. Lo que no puede cambiar es que haya portada y contenido aparte, y
+    // que el pie numere TODAS las paginas menos la portada.
+    // Las secciones FLUYEN: solo abren pagina nueva cuando lo que queda de hoja
+    // no da para el titulo y algo debajo. Por eso ya no se cuenta "una pagina
+    // por seccion" -- eso ataba la prueba al hueco que dejara cada tabla. Lo
+    // que si se afirma: que hay portada y contenido, y que las siete secciones
+    // NO se comen una pagina cada una con un juego de datos de dos filas.
     const paginas = (pdfBase.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
-    assert.ok(paginas >= 5, `el reporte trae ${paginas} paginas y deberia traer portada + 4 secciones`);
+    assert.ok(paginas >= 2, `el reporte trae ${paginas} pagina(s): falta la portada o el contenido`);
+    assert.ok(paginas <= 6,
+        `${paginas} paginas para 7 secciones con datos de prueba: las secciones dejaron de fluir`);
     paso(`el PDF sale entero: ${paginas} paginas, ${pdfBase.length} bytes`);
 
     // Un PDF sin produccion tambien tiene que terminarse -- con portada y todo.
@@ -479,6 +492,11 @@ async function main() {
         // 3 de "el turno 3 produjo 3 cajas" pasaba como si fuera un nombre.
         ['El turno 3 produjo 3 cajas.',                          true,  'un numero pegado a su noun sigue siendo un numero'],
         ['Los turnos 3, 2 y 1 aportaron de mayor a menor.',      true,  'enumeracion suelta: cae en la estatica, que es correcta'],
+        // El prompt prohibe cifras "ni con digitos ni con letra", pero un
+        // prompt es una sugerencia: "tres mil cajas" cuando fueron 7 pasaba.
+        ['Se produjeron tres mil cajas.',                        true,  'cifra con letra: la garantia es el filtro, no el prompt'],
+        ['Hubo una docena de paros.',                            true,  'cantidad con letra'],
+        ['Una máquina concentró la mayor parte de los paros.',   false, '"una" es articulo, no cifra'],
     ]) {
         const sobran = cifrasEnElTexto(texto, dePrueba);
         assert.strictEqual(sobran.length > 0, debeRechazar,
@@ -674,6 +692,10 @@ async function main() {
     const express = require('express');
     const app = express();
     app.use(express.json());
+    // Atrapa el PDFDocument que el endpoint pipea sobre `res`, para poder
+    // mirarle los oyentes desde la prueba 3.51.
+    let docDelReporte = null;
+    app.use((req, res, next) => { res.on('pipe', (src) => { docDelReporte = src; }); next(); });
     app.use('/api', require('../services/ai/router'));
     const servidor = await new Promise((r) => { const s = app.listen(0, () => r(s)); });
     const puerto = servidor.address().port;
@@ -695,6 +717,20 @@ async function main() {
     assert.ok(cupoDurante >= 1,
         `la llamada al LLM corrio con el cupo en ${cupoDurante}: esta fuera del contador`);
     paso(`la narrativa corre dentro del cupo (contador en ${cupoDurante}) y la descarga sale como PDF`);
+
+    // --- 3.51 el error asincrono del PDF tiene quien lo escuche -------------
+    // dibujarReporte devuelve el doc justamente para esto (pipe no propaga los
+    // errores del origen al destino), y el endpoint tiraba el retorno: un
+    // 'error' interno de pdfkit quedaba sin oyente, y un 'error' sin oyente
+    // tumba el proceso ENTERO. pipe no deja oyentes propios en el doc, asi que
+    // el contador es del endpoint o de nadie.
+    assert.ok(docDelReporte, 'la descarga no pipeo ningun doc sobre res');
+    assert.ok(docDelReporte.listenerCount('error') >= 1,
+        'el endpoint no escucha los errores del doc: un fallo asincrono de pdfkit tumba el proceso');
+    // Y no basta con que el oyente exista: se emite de verdad. Sin el fix esto
+    // no llega ni al assert -- el proceso muere aqui mismo.
+    docDelReporte.emit('error', new Error('pdfkit se murio a media pagina (prueba 3.51)'));
+    paso('el doc del reporte tiene oyente de error, y emitirlo no tumba el proceso');
 
     // Y el camino de error NO puede salir etiquetado como PDF: si las cabeceras
     // se escribieran antes de tiempo, el navegador se tragaria un JSON con
@@ -835,6 +871,160 @@ async function main() {
     assert.strictEqual(atorado.herramientasUsadas.length, 10);
     paso('modelo en bucle infinito -> se corta en 10 vueltas y contesta algo');
 
+    // Un proveedor hostil (la URL la configura el cliente) puede mandar MILES
+    // de tool_calls en UN turno, y MAX_VUELTAS no acota eso: el tope es por
+    // vuelta, no por llamada. Se recorta -- tambien en el mensaje que va al
+    // historial, o el proveedor rechazaria los role:'tool' desparejados.
+    let vueltasAvalancha = 0;
+    llm.chat = async () => {
+        vueltasAvalancha++;
+        return vueltasAvalancha === 1
+            ? { message: { role: 'assistant', content: null,
+                  tool_calls: Array.from({ length: 500 }, (_, i) =>
+                      ({ id: `t${i}`, type: 'function', function: { name: 'panorama_planta', arguments: '{}' } })) } }
+            : { message: { role: 'assistant', content: 'Listo.' } };
+    };
+    const avalancha = await conversar({
+        scope: deSpace,
+        credencial: { baseUrl: 'x', apiKey: 'x', model: 'x' },
+        pregunta: 'dale',
+    });
+    assert.ok(avalancha.herramientasUsadas.length <= 20,
+        `una avalancha de tool_calls se ejecuto entera: ${avalancha.herramientasUsadas.length}`);
+    paso('500 tool_calls en una vuelta se recortan al tope, no se ejecutan todas');
+
+    llm.chat = chatReal;
+
+    // --- 8. la comparacion contra el periodo anterior ------------------------
+    // Aritmetica de fechas: aqui es donde se cuela el dia de mas. El periodo
+    // anterior tiene que pegar con el actual sin solaparse ni dejar hueco.
+    const enero = periodoAnterior('2026-01-01', '2026-01-31');
+    assert.deepStrictEqual(enero, { desde: '2025-12-01', hasta: '2025-12-31', dias: 31 },
+        `enero comparado contra ${JSON.stringify(enero)}`);
+    assert.strictEqual(periodoAnterior('2026-03-10', '2026-03-10').hasta, '2026-03-09',
+        'un solo dia -> el anterior es el dia de antes');
+    assert.strictEqual(periodoAnterior('2026-03-10', '2026-03-10').desde, '2026-03-09',
+        'un solo dia -> el periodo anterior tambien dura un dia');
+    paso('el periodo anterior pega con el actual: termina la vispera y dura lo mismo');
+
+    assert.strictEqual(periodoAnterior('2026-01-01', null), null, 'sin hasta no hay comparacion');
+    assert.strictEqual(periodoAnterior('2026-05-01', '2026-04-01'), null, 'rango al reves -> null');
+    assert.strictEqual(periodoAnterior('no es fecha', '2026-04-01'), null, 'basura -> null');
+    paso('sin fechas validas no se inventa un periodo con que comparar');
+
+    assert.strictEqual(variacion(150, 100), 50, '150 contra 100 son +50 %');
+    assert.strictEqual(variacion(50, 100), -50, '50 contra 100 son -50 %');
+    assert.strictEqual(variacion(7, 0), null, 'contra cero NO hay porcentaje, hay null');
+    assert.strictEqual(variacion(0, 0), null, 'cero contra cero tampoco es un porcentaje');
+    paso('la variacion contra un periodo en cero devuelve null, no infinito');
+
+    // --- 9. el guardia de cifras -------------------------------------------
+    // El fallo real (bitacora 2 de la sesion 20): el modelo llamo solo a
+    // resumen_produccion por dia, conto las filas y llamo "ordenes" a ese
+    // conteo. La salida de abajo tiene la misma forma.
+    const porDia = { filas: [
+        { dia: '2026-04-22', cajas: 4 },
+        { dia: '2026-04-23', cajas: 1 },
+        { dia: '2026-06-18', cajas: 1 },
+        { dia: '2026-06-19', cajas: 1 },
+        { dia: '2026-06-20', cajas: 3 },
+        { dia: '2026-06-21', cajas: 5 },
+    ] };
+
+    assert.deepStrictEqual(
+        cifrasSinRespaldo('Se produjeron 15 cajas en el periodo.', [porDia]), [],
+        'la suma de una columna es aritmetica sobre el dato, no una invencion');
+    assert.deepStrictEqual(
+        cifrasSinRespaldo('El dia mas alto fueron 5 cajas.', [porDia]), [],
+        'un valor tal cual de la salida tiene que pasar');
+    paso('las cifras que salen de las herramientas (o de sumarlas) pasan el guardia');
+
+    const inventadas = cifrasSinRespaldo('Total de ordenes de trabajo: 6. Se produjeron 15 cajas.', [porDia]);
+    assert.ok(inventadas.includes('6'),
+        `contar las 6 filas y llamarlas "ordenes" tenia que saltar: ${JSON.stringify(inventadas)}`);
+    assert.ok(!inventadas.includes('15'), 'la suma de la columna no debe saltar');
+    paso('contar las filas de una tool y presentarlas como otra metrica SI salta');
+
+    assert.deepStrictEqual(
+        cifrasSinRespaldo('Del 22 de abril al 21 de junio de 2026 se produjeron 15 cajas.', [porDia]), [],
+        'las fechas del propio dato no son metricas inventadas');
+    assert.deepStrictEqual(
+        cifrasSinRespaldo('Periodo 22 abr 2026 - 21 jun 2026: 15 cajas.', [porDia]), [],
+        'la fecha abreviada y sin "de" tambien es fecha');
+    paso('las fechas de la salida no se confunden con cifras, se escriban como se escriban');
+
+    // El modelo mezcla las dos convenciones en la misma respuesta: "1,234" son
+    // mil doscientos treinta y cuatro y "12,5" son doce y medio.
+    const conComa = { filas: [{ maquina: 'H225A', cajas: 70 }, { maquina: 'TWM', cajas: 16 }], total_encontrado: 86 };
+    assert.deepStrictEqual(cifrasSinRespaldo('H225A concentra el 81,4 % del total.', [conComa]), [],
+        'la coma decimal se leia como separador de miles: 81,4 se convertia en 814');
+    assert.deepStrictEqual(cifrasSinRespaldo('Se movieron 1,234 cajas.', [conComa]), ['1,234'],
+        'con tres digitos detras, la coma SI es de miles');
+    paso('la coma decimal no se confunde con la de miles');
+
+    // En el bucle. Por omision el guardia solo AVISA: la respuesta del usuario
+    // no se toca (ver el porque en agent.js -- medido, marcaba cinco de seis
+    // respuestas normales).
+    let vueltaFalsa = 0;
+    llm.chat = async () => {
+        vueltaFalsa++;
+        if (vueltaFalsa === 1) {
+            return { message: { role: 'assistant', tool_calls: [
+                { id: 't1', type: 'function', function: { name: 'panorama_planta', arguments: '{}' } }] } };
+        }
+        return { message: { role: 'assistant', content: 'Hay 987654 ordenes.' } };
+    };
+    const soloAviso = await conversar({
+        scope: deSpace, credencial: { baseUrl: 'x', apiKey: 'x', model: 'x' }, pregunta: 'cuantas ordenes hay',
+    });
+    assert.strictEqual(soloAviso.texto, 'Hay 987654 ordenes.', 'por omision la respuesta no se toca');
+    assert.ok(soloAviso.cifrasSinRespaldo.includes('987654'), 'la cifra no quedo registrada');
+    assert.strictEqual(vueltaFalsa, 2, 'por omision no debe pedir correccion: son dos llamadas, no tres');
+    paso('por omision el guardia avisa en el log y deja la respuesta como esta');
+
+    // Con AI_GUARDIA_CIFRAS=corrige: se corrige una vez, y si insiste, aviso.
+    vueltaFalsa = 0;
+    let correccionRecibida = null;
+    llm.chat = async ({ messages }) => {
+        vueltaFalsa++;
+        if (vueltaFalsa === 1) {
+            return { message: { role: 'assistant', tool_calls: [
+                { id: 't1', type: 'function', function: { name: 'panorama_planta', arguments: '{}' } }] } };
+        }
+        if (vueltaFalsa === 2) return { message: { role: 'assistant', content: 'Hay 987654 ordenes.' } };
+        correccionRecibida = messages[messages.length - 1].content;
+        return { message: { role: 'assistant', content: 'No tengo ese dato.' } };
+    };
+    process.env.AI_GUARDIA_CIFRAS = 'corrige';
+    delete require.cache[require.resolve('../services/ai/agent')];
+    const agenteQueCorrige = require('../services/ai/agent');
+    const corregida = await agenteQueCorrige.conversar({
+        scope: deSpace, credencial: { baseUrl: 'x', apiKey: 'x', model: 'x' }, pregunta: 'cuantas ordenes hay',
+    });
+    assert.ok(/no salen de ninguna herramienta/.test(correccionRecibida || ''),
+        'no se le dijo al modelo que corrigiera');
+    assert.ok(/987654/.test(correccionRecibida), 'la correccion no nombra la cifra sin respaldo');
+    assert.strictEqual(corregida.texto, 'No tengo ese dato.');
+    assert.deepStrictEqual(corregida.cifrasSinRespaldo, []);
+    paso('una cifra sin respaldo se manda corregir, y la respuesta corregida sale limpia');
+
+    vueltaFalsa = 0;
+    llm.chat = async () => {
+        vueltaFalsa++;
+        if (vueltaFalsa === 1) {
+            return { message: { role: 'assistant', tool_calls: [
+                { id: 't1', type: 'function', function: { name: 'panorama_planta', arguments: '{}' } }] } };
+        }
+        return { message: { role: 'assistant', content: 'Hay 987654 ordenes.' } };
+    };
+    const terca = await agenteQueCorrige.conversar({
+        scope: deSpace, credencial: { baseUrl: 'x', apiKey: 'x', model: 'x' }, pregunta: 'cuantas ordenes hay',
+    });
+    assert.ok(terca.cifrasSinRespaldo.includes('987654'), 'la cifra terca no quedo registrada');
+    assert.ok(/No pude respaldar/.test(terca.texto), 'la respuesta salio sin el aviso');
+    assert.ok(/987654/.test(terca.texto), 'el aviso no dice cual es la cifra');
+    paso('si insiste, la respuesta se entrega CON el aviso, no en silencio');
+    delete process.env.AI_GUARDIA_CIFRAS;   // el interruptor no se queda puesto
     llm.chat = chatReal;
 
     console.log(`\n${ok}/${ok} pruebas del agente OK`);

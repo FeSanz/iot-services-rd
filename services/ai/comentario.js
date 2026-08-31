@@ -301,9 +301,17 @@ function sinContexto(texto, cadenas) {
  * fue baja y se concentro en pocos dias. La cifra esta dos centimetros mas
  * arriba, en la caja de KPI, y esa si viene de la base.
  */
+// Cifras escritas CON LETRA. El prompt las prohibe igual que los digitos, pero
+// un prompt es una sugerencia: "tres mil cajas" cuando fueron 7 pasaba el
+// filtro y llegaba al PDF. "un/una/uno" quedan fuera a proposito -- son
+// articulos ("una maquina") cien veces por cada vez que son numero, y tirarian
+// TODA narrativa a la estatica. Los ordinales ("el segundo turno") tampoco:
+// nombran, no cuentan.
+const CIFRA_CON_LETRA = /\b(dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|veinti\w+|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|cientos?|doscient[oa]s|trescient[oa]s|quinient[oa]s|mil(es)?|mill[oó]n|millones|decenas?|docenas?|centenar(es)?|veintenas?|millar(es)?)\b/gi;
+
 function cifrasEnElTexto(texto, paquete) {
     const limpio = sinContexto(texto, cadenasDelPaquete(paquete));
-    return [...limpio.matchAll(/\d+/g)].map((m) => m[0]);
+    return [...limpio.matchAll(/\d+/g), ...limpio.matchAll(CIFRA_CON_LETRA)].map((m) => m[0]);
 }
 
 /**
