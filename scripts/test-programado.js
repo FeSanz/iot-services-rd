@@ -279,6 +279,35 @@ async function main() {
 
         mandados.length = 0;
 
+        // --- el periodo sale de la RANURA VENCIDA, no del reloj -------------
+        // Un proceso que despierta atrasado ya pasada la medianoche mandaba el
+        // reporte del dia equivocado (y la pasada normal lo repetia). La ranura
+        // de las 7:00 del 2026-06-12 habla del 2026-06-11, sea cuando sea que
+        // el proceso despierte -- y el resultado siempre dice su periodo.
+        const atrasado = await programador.enviarUno({
+            company_id: 1, created_by: ADMIN, periodicidad: 'diario',
+            proxima_ejecucion: new Date('2026-06-12T13:00:00Z'),   // 07:00 CDMX
+        });
+        assert.ok(atrasado.includes('2026-06-11'),
+            `el periodo no salio de la ranura vencida: ${atrasado}`);
+        mandados.length = 0;
+        paso('un programado atrasado cubre el periodo de SU ranura, no el del reloj');
+
+        // --- un SMTP roto queda en el resultado, no en una excepcion --------
+        // Y no puede callar a los grupos que faltan: cada envio va con su try.
+        email.transporter.sendMail = async () => { throw new Error('SMTP dijo que no'); };
+        const roto = await programador.enviarUno(
+            { company_id: 1, created_by: ADMIN, periodicidad: 'mensual' },
+            { desde: '2026-01-01', hasta: '2026-06-30' });
+        assert.ok(/^(FALLO|PARCIAL)/.test(roto),
+            `un SMTP roto tenia que quedar escrito en el resultado: ${roto}`);
+        assert.ok(roto.includes('SMTP dijo que no'), `el motivo no quedo en el resultado: ${roto}`);
+        email.transporter.sendMail = async (opciones) => {
+            mandados.push(opciones);
+            return { messageId: 'de-mentiras' };
+        };
+        paso('un fallo de SMTP queda en ultimo_resultado y no revienta el envio entero');
+
         // --- el interruptor apaga tambien los correos ----------------------
         const flagAntes = (await pool.query(
             `SELECT value FROM mes_settings WHERE company_id = 1 AND name = 'AI_FLAG'`)).rows[0]?.value;

@@ -11,6 +11,34 @@ const { redactar } = require('./credentials');
 const { validarUrlDeProveedor } = require('./url-proveedor');
 
 const TIEMPO_LIMITE_MS = Number(process.env.LLM_TIMEOUT_MS || 60000);
+// Tope de lectura del cuerpo. `respuesta.text()` bufferiza TODO lo que mande el
+// proveedor -- y la URL del proveedor la configura el cliente: uno hostil o
+// roto puede contestar 200 con gigas, que se cargarian enteros en memoria antes
+// del slice() y tumbarian el proceso. 20 MB sobran para /chat/completions.
+const CUERPO_MAX_BYTES = Number(process.env.LLM_MAX_BODY_BYTES || 20 * 1024 * 1024);
+
+/** El cuerpo como texto, cortando la conexion si pasa del tope. */
+async function leerCuerpoConTope(respuesta) {
+    // Sin stream (el mock de las pruebas, o un cuerpo ya consumido): text().
+    if (!respuesta.body || typeof respuesta.body.getReader !== 'function') {
+        return respuesta.text();
+    }
+    const lector = respuesta.body.getReader();
+    const trozos = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await lector.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > CUERPO_MAX_BYTES) {
+            lector.cancel().catch(() => {});
+            throw falloDelProveedor('LLM_RARO',
+                `El proveedor mando un cuerpo de mas de ${Math.round(CUERPO_MAX_BYTES / 1048576)} MB; se corto la lectura`);
+        }
+        trozos.push(value);
+    }
+    return Buffer.concat(trozos).toString('utf8');
+}
 
 /**
  * Lo que ve quien pregunta cuando el proveedor falla.
@@ -143,7 +171,7 @@ async function chat({ baseUrl, apiKey, model, messages, tools, maxTokens, signal
         );
     }
 
-    const texto = await respuesta.text();
+    const texto = await leerCuerpoConTope(respuesta);
     if (!respuesta.ok) {
         throw falloDelProveedor(
             porEstado(respuesta.status),

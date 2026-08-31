@@ -159,6 +159,21 @@ function clasificarIPv6(ip) {
     if (g[0] === 0xfd00 && g[1] === 0x0ec2) return 'siempre';
 
     if ((g[0] & 0xfe00) === 0xfc00) return 'privada';         // fc00::/7 unica local
+
+    // Prefijos que llevan una IPv4 EMBEBIDA que la red traduce al conectar:
+    // NAT64 (64:ff9b::/96, RFC 6052) y 6to4 (2002::/16). Se clasifica la IPv4
+    // de dentro, no el envoltorio: 64:ff9b::a9fe:a9fe ES 169.254.169.254 con
+    // sombrero, y clasificarla como "publica" abria los metadatos en una red
+    // con NAT64.
+    if (g[0] === 0x0064 && g[1] === 0xff9b && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0) {
+        const v4 = [g[6] >> 8, g[6] & 0xff, g[7] >> 8, g[7] & 0xff].join('.');
+        return clasificarIPv4(v4);
+    }
+    if (g[0] === 0x2002) {
+        const v4 = [g[1] >> 8, g[1] & 0xff, g[2] >> 8, g[2] & 0xff].join('.');
+        return clasificarIPv4(v4);
+    }
+
     return null;
 }
 

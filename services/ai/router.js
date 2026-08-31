@@ -418,8 +418,25 @@ router.get('/ai/reporte', authenticateToken, async (req, res) => {
             comentario,
             paleta,
             generadoPor: `usuario ${scope.userId}`,
+        }).on('error', (e) => {
+            // La oreja en el DOCUMENTO, como en pdfEnMemoria: pipe no propaga
+            // los errores del origen, y un 'error' sin oyente tumba el proceso.
+            // Aqui ya salieron bytes; solo queda registrar y cortar el socket
+            // para que el cliente no espere un PDF que no va a terminar.
+            console.error('[AI] GET /ai/reporte: error asincrono del PDF:', redactar(e.message));
+            res.destroy();
         });
     } catch (e) {
+        // Si el PDF ya empezo a salir no hay JSON que valga: dibujarReporte
+        // cerro el flujo (truncado) y aqui solo queda el log. Y si NO salio ni
+        // un byte, fuera las cabeceras de PDF antes de contestar el error --
+        // sin esto, el JSON se descargaba como un archivo .pdf roto.
+        if (res.headersSent) {
+            console.error('[AI] GET /ai/reporte: fallo con el PDF ya empezado:', redactar(e.message));
+            return;
+        }
+        res.removeHeader('Content-Type');
+        res.removeHeader('Content-Disposition');
         responderError(res, e, 'GET /ai/reporte');
     }
 });

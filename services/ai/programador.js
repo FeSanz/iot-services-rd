@@ -68,6 +68,12 @@ async function proximaEjecucion({ periodicidad, hora_local, dia_semana }) {
  * Que periodo cubre cada reporte. Siempre CERRADO y hacia atras: el diario de
  * las 7 de la mañana habla de AYER, no del dia que acaba de empezar y todavia
  * no tiene ni un registro.
+ *
+ * `ahora` es LA RANURA QUE TOCABA (proxima_ejecucion), no el reloj. Con el
+ * reloj, un proceso que despierta atrasado ya pasada la medianoche calculaba
+ * "ayer" desde el dia nuevo: mandaba el reporte de hoy-1, la pasada normal lo
+ * repetia dos horas despues, y el del dia que tocaba no salia nunca. Anclado a
+ * la ranura, lo atrasado cubre SU periodo aunque salga tarde.
  */
 function periodoDe(periodicidad, ahora = new Date()) {
     // Con los getters locales, NO con toISOString(): `hoy` es hora de pared de
@@ -103,7 +109,11 @@ function pdfEnMemoria(datosDelDibujo) {
         flujo.on('data', (t) => trozos.push(t));
         flujo.on('end', () => resolve(Buffer.concat(trozos)));
         flujo.on('error', reject);
-        dibujarReporte(flujo, datosDelDibujo);
+        // La oreja va en el DOCUMENTO, no solo en el flujo: pipe no propaga los
+        // errores del origen al destino. Sin esto, un error interno de pdfkit
+        // dejaba la promesa pendiente para siempre -- y el finally que suelta el
+        // lugar del cupo, sin correr hasta el reinicio.
+        dibujarReporte(flujo, datosDelDibujo).on('error', reject);
     });
 }
 
@@ -186,7 +196,9 @@ async function enviarUno(prog, periodo = null) {
     }
 
     const scope = scopeDeCompania(await resolveScope(prog.created_by), prog.company_id);
-    const { desde, hasta } = periodo || periodoDe(prog.periodicidad);
+    // Anclado a la ranura vencida, no al reloj: ver periodoDe().
+    const { desde, hasta } = periodo
+        || periodoDe(prog.periodicidad, prog.proxima_ejecucion ? new Date(prog.proxima_ejecucion) : undefined);
 
     const grupos = await gruposDeDestinatarios(scope.orgIds);
     if (grupos.length === 0) {
@@ -207,61 +219,76 @@ async function enviarUno(prog, periodo = null) {
     const soltar = ocuparLugar(prog.company_id);
     let envios = 0;
     let personas = 0;
+    const fallos = [];
     try {
         for (const grupo of grupos) {
-            // Un alcance por grupo: cada PDF se construye SOLO con lo que ese
-            // grupo puede ver.
-            const alcance = {
-                ...scope,
-                orgIds: grupo.orgIds,
-                orgsPorCompania: { [prog.company_id]: grupo.orgIds },
-            };
-
-            const datos = await datosDelReporte(alcance, desde, hasta);
-            // Un PDF vacio cada lunes entrena a la gente a no abrirlo.
-            if (!datos.resumen || !datos.resumen.registros) continue;
-
-            // Una narrativa POR GRUPO, no una compartida: cada PDF lleva las
-            // cifras de su alcance, y un texto que hable de numeros que no estan
-            // en el documento es exactamente lo que este proyecto lleva evitando
-            // desde el principio. Son N llamadas al LLM por envio, cada una con
-            // su tope de 20 s y su respaldo estatico.
-            const comentario = await redactarComentario({ empresa, desde, hasta, datos, credencial });
-
-            const pdf = await pdfEnMemoria({
-                empresa, desde, hasta, datos, paleta, comentario,
-                generadoPor: `programado ${prog.periodicidad}`,
-            });
-
-            const producido = Number(datos.resumen.cajas) || 0;
-            await transporter.sendMail({
-                from: `"Sistema MES" <${process.env.SMTP_USER}>`,
-                // Solo copia oculta, y SIN copia a la cuenta que manda: con
-                // `to: SMTP_USER` el buzon del sistema acababa recibiendo la
-                // produccion de todas las compañias, todas las semanas.
-                // Un correo automatico que reparte la libreta de direcciones
-                // entera tampoco: por eso bcc y no to.
-                bcc: grupo.correos.join(', '),
-                subject: `Reporte de produccion ${desde} a ${hasta} — ${empresa}`,
-                text: `Reporte de produccion de ${empresa}.\n\n`
-                    + `Periodo: ${desde} a ${hasta}\n`
-                    + `Producido: ${producido.toLocaleString('es-MX')} cajas\n\n`
-                    + `El detalle va en el PDF adjunto.\n\n`
-                    + `Este correo es automatico. Para dejar de recibirlo, pide que se `
-                    + `desactive el reporte programado de tu compañia.`,
-                attachments: [{
-                    filename: `reporte-produccion-${desde}-a-${hasta}.pdf`,
-                    content: pdf,
-                    contentType: 'application/pdf',
-                }],
-            });
-            envios++;
-            personas += grupo.correos.length;
+            // Cada grupo con su propio try: un SMTP que rechaza el correo del
+            // grupo 2 no puede dejar sin reporte al 3 -- la proxima_ejecucion ya
+            // avanzo y no hay reintento, asi que lo que no salga aqui no sale.
+            try {
+                // Un alcance por grupo: cada PDF se construye SOLO con lo que ese
+                // grupo puede ver.
+                const alcance = {
+                    ...scope,
+                    orgIds: grupo.orgIds,
+                    orgsPorCompania: { [prog.company_id]: grupo.orgIds },
+                };
+    
+                const datos = await datosDelReporte(alcance, desde, hasta);
+                // Un PDF vacio cada lunes entrena a la gente a no abrirlo.
+                if (!datos.resumen || !datos.resumen.registros) continue;
+    
+                // Una narrativa POR GRUPO, no una compartida: cada PDF lleva las
+                // cifras de su alcance, y un texto que hable de numeros que no estan
+                // en el documento es exactamente lo que este proyecto lleva evitando
+                // desde el principio. Son N llamadas al LLM por envio, cada una con
+                // su tope de 20 s y su respaldo estatico.
+                const comentario = await redactarComentario({ empresa, desde, hasta, datos, credencial });
+    
+                const pdf = await pdfEnMemoria({
+                    empresa, desde, hasta, datos, paleta, comentario,
+                    generadoPor: `programado ${prog.periodicidad}`,
+                });
+    
+                const producido = Number(datos.resumen.cajas) || 0;
+                await transporter.sendMail({
+                    from: `"Sistema MES" <${process.env.SMTP_USER}>`,
+                    // Solo copia oculta, y SIN copia a la cuenta que manda: con
+                    // `to: SMTP_USER` el buzon del sistema acababa recibiendo la
+                    // produccion de todas las compañias, todas las semanas.
+                    // Un correo automatico que reparte la libreta de direcciones
+                    // entera tampoco: por eso bcc y no to.
+                    bcc: grupo.correos.join(', '),
+                    subject: `Reporte de produccion ${desde} a ${hasta} — ${empresa}`,
+                    text: `Reporte de produccion de ${empresa}.\n\n`
+                        + `Periodo: ${desde} a ${hasta}\n`
+                        + `Producido: ${producido.toLocaleString('es-MX')} cajas\n\n`
+                        + `El detalle va en el PDF adjunto.\n\n`
+                        + `Este correo es automatico. Para dejar de recibirlo, pide que se `
+                        + `desactive el reporte programado de tu compañia.`,
+                    attachments: [{
+                        filename: `reporte-produccion-${desde}-a-${hasta}.pdf`,
+                        content: pdf,
+                        contentType: 'application/pdf',
+                    }],
+                });
+                envios++;
+                personas += grupo.correos.length;
+            } catch (e) {
+                fallos.push(e.message);
+                console.error(`[AI-PROG] programado ${prog.schedule_id}, envio a ${grupo.correos.length} correo(s):`, e.message);
+            }
         }
     } finally {
         soltar();
     }
 
+    if (fallos.length) {
+        const cabeza = envios === 0
+            ? 'FALLO: ningun envio salio'
+            : `PARCIAL: ${envios} de ${grupos.length} envio(s) salieron (${personas} destinatario(s))`;
+        return `${cabeza}, ${desde} a ${hasta}. ${fallos.join('; ')}`;
+    }
     if (envios === 0) {
         return `Sin produccion entre ${desde} y ${hasta}: no se mando nada`;
     }

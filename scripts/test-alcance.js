@@ -115,6 +115,23 @@ async function main() {
     assert.deepStrictEqual(delToken.orgIds, [6]);
     paso('el alcance sale del token (5), no del req.query mentiroso (8)');
 
+    // --- el corte de dia es el de la PLANTA, no el del servidor -------------
+    // Las columnas son timestamptz y la base corre en UTC: un `>= $1` pelado
+    // cortaba a la medianoche UTC (las 18:00 del dia anterior en CDMX). La
+    // produccion del 10 a las 23:00 hora de planta es 11-05:00Z: tiene que
+    // caer DENTRO del dia local 10, y con el corte UTC caia fuera.
+    const { rangoFechas } = require('../services/ai/scope');
+    const rf = rangoFechas('execution_date', '2026-06-10', '2026-06-10', 1);
+    assert.ok(rf.sql.includes('AT TIME ZONE'), 'el corte no esta en zona de planta');
+    const borde = await poolReadonly.query(
+        `SELECT ('2026-06-11T05:00:00Z'::timestamptz >= ($1::timestamp AT TIME ZONE 'America/Mexico_City')
+            AND  '2026-06-11T05:00:00Z'::timestamptz < (($2::date + 1)::timestamp AT TIME ZONE 'America/Mexico_City')) AS dentro,
+                ('2026-06-10T05:00:00Z'::timestamptz >= ($1::timestamp AT TIME ZONE 'America/Mexico_City')) AS madrugada`,
+        ['2026-06-10', '2026-06-10']);
+    assert.strictEqual(borde.rows[0].dentro, true, 'la noche del dia pedido quedo fuera del corte');
+    assert.strictEqual(borde.rows[0].madrugada, false, 'la noche del dia ANTERIOR se colo en el corte');
+    paso('rangoFechas corta a la medianoche de la planta, no a la del servidor');
+
     console.log(`\n${ok}/${ok} pruebas de alcance OK`);
 }
 

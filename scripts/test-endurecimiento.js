@@ -35,13 +35,20 @@ const IPS = {
         'fd00:eC2::254',            // la misma, en mayusculas
         '100.100.100.200',          // metadatos de Alibaba (dentro de CGNAT)
         '192.0.0.192',              // metadatos de Oracle (dentro de 192.0.0/24)
+        // IPv4 embebida que la RED traduce al conectar: NAT64 (64:ff9b::/96) y
+        // 6to4 (2002::/16). El envoltorio parece publico; lo que cuenta es la
+        // IPv4 de dentro -- estas dos SON 169.254.169.254 con sombrero.
+        '64:ff9b::a9fe:a9fe',       // metadatos via NAT64
+        '2002:a9fe:a9fe::',         // metadatos via 6to4
         '0.0.0.0', '224.0.0.1', '::', 'fe80::1', 'ff02::1',
     ],
     privada: [
         '127.0.0.1', '::1', '::ffff:127.0.0.1',
         '10.0.0.5', '192.168.1.1', '172.16.0.1', '100.64.0.1', 'fd00::1',
+        '64:ff9b::c0a8:101',        // 192.168.1.1 via NAT64
     ],
-    publica: ['8.8.8.8', '1.1.1.1', '2606:4700::1', '::ffff:8.8.8.8'],
+    publica: ['8.8.8.8', '1.1.1.1', '2606:4700::1', '::ffff:8.8.8.8',
+              '64:ff9b::808:808'],  // 8.8.8.8 via NAT64: publica de verdad
 };
 
 async function main() {

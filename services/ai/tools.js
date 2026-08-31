@@ -12,7 +12,8 @@
  *    declarado en el esquema, el modelo mando "open". Los enums son una
  *    sugerencia para el modelo, no una garantia.
  */
-const { consultarConAlcance } = require('./scope');
+const { consultarConAlcance, rangoFechas } = require('./scope');
+const { ZONA } = require('./domain');
 
 const LIMITE_MAXIMO = 50;   // tope duro de filas: esto va a un prompt
 // Tope de los RESUMENES agrupados. Mas bajo que el de las filas por dos motivos
@@ -77,20 +78,11 @@ function fecha(valor) {
     return d.toISOString().slice(0, 10) === iso ? iso : null;
 }
 
-/**
- * Filtro de fechas para una columna. Devuelve el fragmento SQL y los valores.
- *
- * Sin fechas NO filtra nada. Es deliberado: los datos de esta base se detienen
- * en junio de 2026, y un "ultimos 7 dias" por omision devolveria cero filas y
- * el bot diria que no hubo produccion, que es falso.
- */
-function rangoFechas(columna, desde, hasta, siguiente) {
-    const partes = [];
-    const valores = [];
-    if (desde) { valores.push(desde); partes.push(`AND ${columna} >= $${siguiente + valores.length - 1}`); }
-    if (hasta) { valores.push(hasta); partes.push(`AND ${columna} < ($${siguiente + valores.length - 1}::date + 1)`); }
-    return { sql: partes.join('\n'), valores };
-}
+// rangoFechas vive en scope.js: el corte de dia en zona de planta es una regla
+// de TODAS las consultas del bot (tools y reporte), no de este archivo.
+// Sin fechas NO filtra nada. Es deliberado: los datos de esta base se detienen
+// en junio de 2026, y un "ultimos 7 dias" por omision devolveria cero filas y
+// el bot diria que no hubo produccion, que es falso.
 
 /**
  * Una consulta con LIMIT, devolviendo TAMBIEN cuantas filas habia de verdad.
@@ -165,7 +157,8 @@ async function notaSinDatos(ctx, vista, desde, hasta) {
         return 'No hay ni un registro de produccion en tu alcance.';
     }
     const { rows } = await consultarConAlcance(ctx.scope, `
-        SELECT min(execution_date)::date AS primera, max(execution_date)::date AS ultima
+        SELECT (min(execution_date) AT TIME ZONE '${ZONA}')::date AS primera,
+               (max(execution_date) AT TIME ZONE '${ZONA}')::date AS ultima
           FROM ${vista}
          WHERE organization_id = ANY($ORGS)`);
     const hay = rows[0];
@@ -850,6 +843,7 @@ TOOLS.comparar_periodos = {
         }
 
         const totales = async ({ desde, hasta }) => {
+            const r = rangoFechas('execution_date', desde, hasta, 1);
             const { rows } = await consultarConAlcance(ctx.scope, `
                 SELECT count(*)::int AS registros,
                        COALESCE(sum(cajas), 0)   AS cajas,
@@ -860,8 +854,7 @@ TOOLS.comparar_periodos = {
                        END AS merma_pct
                   FROM v_production_shift
                  WHERE organization_id = ANY($ORGS)
-                   AND execution_date >= $1
-                   AND execution_date < ($2::date + 1)`, [desde, hasta]);
+                 ${r.sql}`, r.valores);
             return { desde, hasta, ...rows[0] };
         };
 
@@ -1056,15 +1049,17 @@ TOOLS.generar_reporte = {
             return { error: 'La fecha "desde" es posterior a "hasta".' };
         }
 
+        const rf = rangoFechas('execution_date', desde, hasta, 1);
         const { rows } = await consultarConAlcance(ctx.scope, `
             SELECT count(*)::int AS registros, sum(cajas) AS cajas
               FROM v_production_shift
              WHERE organization_id = ANY($ORGS)
-               AND execution_date >= $1 AND execution_date < ($2::date + 1)`, [desde, hasta]);
+             ${rf.sql}`, rf.valores);
 
         if (!rows[0] || !rows[0].registros) {
             const hay = await consultarConAlcance(ctx.scope, `
-                SELECT min(execution_date)::date AS primera, max(execution_date)::date AS ultima
+                SELECT (min(execution_date) AT TIME ZONE '${ZONA}')::date AS primera,
+                       (max(execution_date) AT TIME ZONE '${ZONA}')::date AS ultima
                   FROM v_production_shift
                  WHERE organization_id = ANY($ORGS)`);
             const rango = hay.rows[0];

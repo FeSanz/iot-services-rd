@@ -17,6 +17,7 @@
 //   poolReadonly -- rol condor_ai_ro. TODO dato que toca el bot pasa por aqui.
 const pool = require('../../database/pool');
 const poolReadonly = require('../../database/poolReadonly');
+const { ZONA } = require('./domain');
 
 /**
  * Organizaciones y compañias del usuario. Entrada: el user_id del TOKEN.
@@ -128,4 +129,31 @@ function orgEnAlcance(scope, organizationId) {
     return scope.orgIds.includes(Number(organizationId));
 }
 
-module.exports = { resolveScope, scopeDeCompania, consultarConAlcance, orgEnAlcance };
+/**
+ * Rango [desde, hasta] cerrado, con el corte de dia en la zona DE LA PLANTA.
+ *
+ * Las columnas de fecha son timestamptz y la base corre en UTC: un
+ * `col >= '2026-08-25'` cortaria a la medianoche UTC, que son las 6 de la tarde
+ * del dia anterior en planta. El "reporte del 25" traia la produccion de la
+ * noche del 24 y perdia la de la noche del 25 -- y la grafica por dia, que
+ * agrupa por fecha local, mostraba una barra fuera del periodo declarado.
+ *
+ * `$N::timestamp AT TIME ZONE zona` convierte la fecha pedida en la medianoche
+ * de Mexico. La conversion va en el LADO DEL PARAMETRO, no sobre la columna:
+ * la comparacion sigue siendo por indice.
+ */
+function rangoFechas(columna, desde, hasta, siguiente) {
+    const partes = [];
+    const valores = [];
+    if (desde) {
+        valores.push(desde);
+        partes.push(`AND ${columna} >= ($${siguiente + valores.length - 1}::timestamp AT TIME ZONE '${ZONA}')`);
+    }
+    if (hasta) {
+        valores.push(hasta);
+        partes.push(`AND ${columna} < (($${siguiente + valores.length - 1}::date + 1)::timestamp AT TIME ZONE '${ZONA}')`);
+    }
+    return { sql: partes.join('\n'), valores };
+}
+
+module.exports = { resolveScope, scopeDeCompania, consultarConAlcance, orgEnAlcance, rangoFechas };
