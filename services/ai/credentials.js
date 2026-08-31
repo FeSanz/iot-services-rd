@@ -97,12 +97,23 @@ function validarLlave(provider, apiKey) {
 async function guardarCredencial({ companyId, provider, apiKey, model, baseUrl, userId }) {
     const llave = validarLlave(provider, apiKey);
 
+    // Lo que ya habia, para no exigir en cada rotacion lo que no cambio.
+    const { rows: previa } = await pool.query(
+        'SELECT model, base_url FROM mes_ai_credentials WHERE company_id = $1 AND provider = $2',
+        [companyId, provider]
+    );
+
     // La fila que se guarda tiene que poder USARSE tal cual: todo lo que el
     // chat necesita (url y modelo) se resuelve y valida aqui, con quien lo
     // escribio delante, y no meses despues dentro de una conversacion.
+    //
+    // Rotar la llave no borra la URL: sin una nueva se conserva la guardada
+    // (que ya paso por validarUrlDeProveedor al escribirse), y en su defecto
+    // la del proveedor. Solo una credencial NUEVA de ollama esta obligada a
+    // decirla -- es el unico sin urlPorDefecto.
     const urlFinal = (typeof baseUrl === 'string' && baseUrl.trim())
         ? baseUrl.trim()
-        : (PROVEEDORES[provider].urlPorDefecto || null);
+        : (previa[0]?.base_url || PROVEEDORES[provider].urlPorDefecto || null);
     if (!urlFinal) {
         throw falla(400, `${provider} necesita "base_url": no hay una por defecto`);
     }
@@ -112,10 +123,6 @@ async function guardarCredencial({ companyId, provider, apiKey, model, baseUrl, 
     // ya habia. Solo una credencial NUEVA esta obligada a decirlo.
     let modeloFinal = (typeof model === 'string' && model.trim()) ? model.trim() : null;
     if (!modeloFinal) {
-        const { rows: previa } = await pool.query(
-            'SELECT model FROM mes_ai_credentials WHERE company_id = $1 AND provider = $2',
-            [companyId, provider]
-        );
         modeloFinal = previa[0]?.model || null;
         if (!modeloFinal) {
             throw falla(400, `Falta "model": di que modelo de ${provider} se va a usar`);

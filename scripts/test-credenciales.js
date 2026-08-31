@@ -148,7 +148,17 @@ async function main() {
 
     process.env.AI_ALLOW_PRIVATE_LLM_HOST = 'true';
     await cred.guardarCredencial(LOCAL);
+
+    // Rotar la llave de ollama SIN volver a escribir la URL: se conserva la
+    // guardada, igual que el modelo. Antes esto moria con 400 "necesita
+    // base_url" -- lo encontro el usuario rotando desde "Agregar widget".
+    const rotada = await cred.guardarCredencial({
+        companyId: COMPANIA_PRUEBA, provider: 'ollama', apiKey: 'otra-llave-ollama', userId: 5,
+    });
+    assert.strictEqual(rotada.base_url, LOCAL.baseUrl, 'la rotacion perdio la base_url guardada');
+    assert.strictEqual(rotada.model, LOCAL.model, 'la rotacion perdio el modelo guardado');
     process.env.AI_ALLOW_PRIVATE_LLM_HOST = flagOriginal;
+    paso('rotar la llave de ollama sin base_url conserva la URL y el modelo guardados');
     paso('ollama se guarda sin prefijo de llave, pero su base_url local exige el flag');
 
     // --- el endpoint --------------------------------------------------------
