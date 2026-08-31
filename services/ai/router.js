@@ -25,7 +25,7 @@ const { datosDelReporte, dibujarReporte } = require('./reporte');
 const { paletaDeCompania } = require('./portada');
 const { redactarComentario } = require('./comentario');
 const programador = require('./programador');
-const { asistenteEncendido, apagarAsistente } = require('./interruptor');
+const { asistenteEncendido, apagarAsistente, encenderAsistente } = require('./interruptor');
 const { fecha } = require('./tools');
 const { registrarTurno } = require('./audit');
 const { tomarLugar, soltarLugar } = require('./cupo');
@@ -221,6 +221,24 @@ router.delete('/ai/enabled', authenticateToken, async (req, res) => {
         ));
     } catch (e) {
         responderError(res, e, 'DELETE /ai/enabled');
+    }
+});
+
+// --- encender el asistente de la compañia ------------------------------------
+//
+// La pareja del DELETE de arriba: el "guardar" del tipo Asistente IA en
+// "Agregar widget". Mismo rol (SuperAdmin, leido de la base) y misma resolucion
+// de compañia; el company_id viene en el body porque es POST.
+router.post('/ai/enabled', authenticateToken, async (req, res) => {
+    try {
+        const scope = await contexto(req);
+        const companyId = companiaDeLaPeticion(scope, req.body.company_id);
+        const encendido = await encenderAsistente(companyId, scope.userId);
+        res.status(200).json(envolver(
+            encendido ? 'Asistente habilitado' : 'El asistente ya estaba encendido'
+        ));
+    } catch (e) {
+        responderError(res, e, 'POST /ai/enabled');
     }
 });
 

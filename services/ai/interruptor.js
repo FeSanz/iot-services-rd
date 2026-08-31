@@ -37,8 +37,8 @@ async function asistenteEncendido(companyId) {
  * "duplicate key".
  *
  * Apaga, NO borra la llave del LLM: mes_ai_credentials se queda como estaba.
- * Volver a encenderlo es el UPDATE inverso de ai_flag.sql; mientras no exista
- * la pantalla de ajustes del asistente, no hay camino de vuelta por interfaz.
+ * El camino de vuelta por interfaz es encenderAsistente(), detras del tipo
+ * "Asistente IA" de "Agregar widget".
  */
 async function apagarAsistente(companyId, userId) {
     const { rowCount } = await pool.query(
@@ -50,4 +50,38 @@ async function apagarAsistente(companyId, userId) {
     return rowCount > 0;
 }
 
-module.exports = { asistenteEncendido, apagarAsistente };
+/**
+ * Enciende el asistente de una compañia. Es lo que hay detras de "guardar" el
+ * tipo Asistente IA en "Agregar widget". Devuelve true si estaba apagado.
+ *
+ * Al reves que el apagado, aqui SI puede hacer falta un INSERT (compañia sin
+ * fila de AI_FLAG), asi que replica assets/db/ai_flag.sql: alinear primero la
+ * secuencia atrasada de mes_settings --idempotente, y de paso deja arreglado
+ * ese hueco para la pantalla de ajustes del propio MES-- y luego insertar solo
+ * si no existe. Tres sentencias sin transaccion: cada una es idempotente y
+ * esto es una accion de admin, no una ruta caliente.
+ */
+async function encenderAsistente(companyId, userId) {
+    const estaba = await asistenteEncendido(companyId);
+    await pool.query(
+        `SELECT setval(pg_get_serial_sequence('mes_settings', 'setting_id'),
+                GREATEST((SELECT COALESCE(max(setting_id), 1) FROM mes_settings), 1))`
+    );
+    await pool.query(
+        `INSERT INTO mes_settings (company_id, name, value, description, type, status, enabled_flag, created_by, updated_by)
+         SELECT $1, 'AI_FLAG', 'false', 'Asistente IA disponible para la compañia', 'AI', 'Verificado', 'Y', $2, $2
+          WHERE NOT EXISTS (SELECT 1 FROM mes_settings WHERE company_id = $1 AND name = 'AI_FLAG')`,
+        [companyId, String(userId)]
+    );
+    // enabled_flag tambien: una fila deshabilitada dejaria el POST contestando
+    // "habilitado" con asistenteEncendido() devolviendo false.
+    await pool.query(
+        `UPDATE mes_settings
+            SET value = 'true', enabled_flag = 'Y', updated_by = $2, updated_date = now()
+          WHERE company_id = $1 AND name = 'AI_FLAG'`,
+        [companyId, String(userId)]
+    );
+    return !estaba;
+}
+
+module.exports = { asistenteEncendido, apagarAsistente, encenderAsistente };
