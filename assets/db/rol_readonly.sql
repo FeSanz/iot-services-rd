@@ -27,7 +27,14 @@ $$;
 -- la sesion entera abre en modo lectura.
 ALTER ROLE condor_ai_ro SET default_transaction_read_only = on;
 
-GRANT CONNECT ON DATABASE condor_db TO condor_ai_ro;
+-- La base NO se nombra a mano: en local es condor_db y en produccion mes_kj12,
+-- y un GRANT contra un nombre que no existe aborta el archivo entero.
+DO $$
+BEGIN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO condor_ai_ro', current_database());
+END
+$$;
+
 GRANT USAGE   ON SCHEMA public      TO condor_ai_ro;
 
 -- SOLO las vistas del bot. Ninguna tabla base.
@@ -43,6 +50,15 @@ GRANT SELECT ON v_wo_status,
                 v_oee
              TO condor_ai_ro;
 
+-- En Postgres < 15, PUBLIC trae CREATE sobre el esquema public de fabrica: un
+-- rol "de solo lectura" podria crear tablas. Se revoca de PUBLIC (revocarselo
+-- solo al rol no sirve: lo heredaria igual). En 15+ es un no-op, y el dueño de
+-- la base no lo pierde -- aqui los unicos roles son condor (dueño) y este.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
 -- Que no herede nada nuevo por accidente: si mañana alguien crea una tabla,
 -- este rol no la ve hasta que se le otorgue a mano.
+-- OJO: ALTER DEFAULT PRIVILEGES solo cubre lo que cree QUIEN CORRE ESTE
+-- ARCHIVO; una tabla creada por otro rol no lo hereda -- aunque tampoco se
+-- otorga sola, este REVOKE es cinturon, no muralla.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM condor_ai_ro;

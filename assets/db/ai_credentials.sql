@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS mes_ai_credentials (
     auth_tag        BYTEA    NOT NULL,   -- etiqueta GCM: detecta manipulacion
     key_version     SMALLINT NOT NULL DEFAULT 1,
     last4           CHAR(4)  NOT NULL,   -- lo unico que se le muestra a la UI
+    -- created_by/updated_by sin FK a proposito: son informativos, y la llave de
+    -- la compañia no puede depender de que su creador siga existiendo.
     created_by      INTEGER,
     created_date    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_by      INTEGER,

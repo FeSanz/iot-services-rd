@@ -26,6 +26,15 @@ CREATE TABLE IF NOT EXISTS mes_ai_audit (
 CREATE INDEX IF NOT EXISTS idx_ai_audit_company_fecha
     ON mes_ai_audit (company_id, created_date DESC);
 
+-- "¿Quien pregunto que?" filtra por usuario -- la razon de ser de la tabla.
+CREATE INDEX IF NOT EXISTS idx_ai_audit_user_fecha
+    ON mes_ai_audit (user_id, created_date DESC);
+
+-- user_id/company_id SIN llave foranea, a proposito: la bitacora tiene que
+-- sobrevivir a que borren al usuario, y una FK convertiria "borrar un usuario"
+-- en "no se puede, tiene bitacora". Los valores vienen del alcance resuelto
+-- contra la base, no de la peticion.
+
 COMMENT ON TABLE mes_ai_audit IS 'Un renglon por turno de conversacion del bot. Sin credenciales.';
 
 -- El bot no se lee a si mismo.

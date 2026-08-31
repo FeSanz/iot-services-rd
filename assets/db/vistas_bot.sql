@@ -98,15 +98,25 @@ SELECT w.organization_id,
   CROSS JOIN LATERAL (
        SELECT e.execution_date AT TIME ZONE 'America/Mexico_City' AS local_ts
   ) t
-  LEFT JOIN mes_shifts s
-         ON s.organization_id = w.organization_id
-        AND s.enabled_flag    = 'Y'
-        AND CASE
-              WHEN s.start_time < s.end_time
-                THEN t.local_ts::time >= s.start_time AND t.local_ts::time < s.end_time
-              ELSE  -- el turno cruza la medianoche (22:00-06:00, 18:00-06:00)
-                    t.local_ts::time >= s.start_time OR  t.local_ts::time < s.end_time
-            END;
+  -- LATERAL con LIMIT 1 y no un JOIN plano: dos turnos habilitados que se
+  -- solapen (06:00-18:00 y 06:00-14:00 en la misma organizacion) duplicarian
+  -- cada fila de ejecucion -- y sus cajas, en TODO lo que agrega sobre esta
+  -- vista, sin ningun error visible. Se queda UNO: el que empieza mas tarde
+  -- (el mas especifico) y shift_id de desempate, que es deterministico.
+  LEFT JOIN LATERAL (
+       SELECT x.shift_id, x.name, x.start_time, x.end_time
+         FROM mes_shifts x
+        WHERE x.organization_id = w.organization_id
+          AND x.enabled_flag    = 'Y'
+          AND CASE
+                WHEN x.start_time < x.end_time
+                  THEN t.local_ts::time >= x.start_time AND t.local_ts::time < x.end_time
+                ELSE  -- el turno cruza la medianoche (22:00-06:00, 18:00-06:00)
+                      t.local_ts::time >= x.start_time OR  t.local_ts::time < x.end_time
+              END
+        ORDER BY x.start_time DESC, x.shift_id
+        LIMIT 1
+  ) s ON true;
 
 
 -- ---------------------------------------------------------------------------

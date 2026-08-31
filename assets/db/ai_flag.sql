@@ -9,6 +9,17 @@
 --
 --   psql -f backend/assets/db/ai_flag.sql -v company=1
 
+-- La secuencia de mes_settings viene ATRASADA en produccion (setval en 13 con
+-- max(setting_id) = 16, medido el 2026-08-27 contra el volcado real): alguna
+-- carga metio filas con id explicito sin avanzarla. Cualquier INSERT sin id
+-- -- el nuestro, y tambien el de la pantalla de ajustes del propio MES --
+-- revienta con "duplicate key". Se alinea antes de insertar; es idempotente y
+-- de paso deja arreglado ese hueco. Reportado aparte al equipo MES.
+SELECT setval(
+    pg_get_serial_sequence('mes_settings', 'setting_id'),
+    GREATEST((SELECT COALESCE(max(setting_id), 1) FROM mes_settings), 1)
+);
+
 INSERT INTO mes_settings (company_id, name, value, description, type, status, enabled_flag, created_by, updated_by)
 SELECT :company, 'AI_FLAG', 'false', 'Asistente IA disponible para la compañia', 'AI', 'Verificado', 'Y', 'bot-ia', 'bot-ia'
 WHERE NOT EXISTS (
