@@ -25,7 +25,7 @@ const { datosDelReporte, dibujarReporte } = require('./reporte');
 const { paletaDeCompania } = require('./portada');
 const { redactarComentario } = require('./comentario');
 const programador = require('./programador');
-const { asistenteEncendido } = require('./interruptor');
+const { asistenteEncendido, apagarAsistente } = require('./interruptor');
 const { fecha } = require('./tools');
 const { registrarTurno } = require('./audit');
 const { tomarLugar, soltarLugar } = require('./cupo');
@@ -205,7 +205,26 @@ router.get('/ai/enabled', authenticateToken, async (req, res) => {
     }
 });
 
-// --- borrar -----------------------------------------------------------------
+// --- quitar el asistente de la compañia -------------------------------------
+//
+// El "Eliminar" del menu del chat. NO es lo mismo que borrar un widget del
+// dashboard, aunque se pida desde el mismo sitio: aquel sale de UN tablero,
+// este apaga el asistente de la compañia ENTERA. Por eso pide SuperAdmin --el
+// mismo rol que configura la llave-- y no cualquiera que tenga el chat abierto.
+router.delete('/ai/enabled', authenticateToken, async (req, res) => {
+    try {
+        const scope = await contexto(req);
+        const companyId = companiaDeLaPeticion(scope, req.query.company_id);
+        const apagado = await apagarAsistente(companyId, scope.userId);
+        res.status(200).json(envolver(
+            apagado ? 'Asistente eliminado' : 'El asistente ya estaba apagado'
+        ));
+    } catch (e) {
+        responderError(res, e, 'DELETE /ai/enabled');
+    }
+});
+
+// --- borrar la llave --------------------------------------------------------
 router.delete('/ai/credentials/:provider', authenticateToken, async (req, res) => {
     try {
         const scope = await contexto(req);

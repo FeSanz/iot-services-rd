@@ -26,4 +26,28 @@ async function asistenteEncendido(companyId) {
     return rows.length > 0 && String(rows[0].value).trim().toLowerCase() === 'true';
 }
 
-module.exports = { asistenteEncendido };
+/**
+ * Apaga el asistente de una compañia. Es lo que hay detras de "Eliminar" en el
+ * menu del chat.
+ *
+ * Solo UPDATE, nunca INSERT. Dos razones: sin fila el asistente YA esta apagado
+ * (asistenteEncendido() devuelve false sin fila), asi que no hay nada que
+ * escribir; y la secuencia de mes_settings viene atrasada en produccion --ver
+ * assets/db/ai_flag.sql-- con lo que un INSERT sin id revienta con
+ * "duplicate key".
+ *
+ * Apaga, NO borra la llave del LLM: mes_ai_credentials se queda como estaba.
+ * Volver a encenderlo es el UPDATE inverso de ai_flag.sql; mientras no exista
+ * la pantalla de ajustes del asistente, no hay camino de vuelta por interfaz.
+ */
+async function apagarAsistente(companyId, userId) {
+    const { rowCount } = await pool.query(
+        `UPDATE mes_settings
+            SET value = 'false', updated_by = $2, updated_date = now()
+          WHERE company_id = $1 AND name = 'AI_FLAG'`,
+        [companyId, String(userId)]
+    );
+    return rowCount > 0;
+}
+
+module.exports = { asistenteEncendido, apagarAsistente };
